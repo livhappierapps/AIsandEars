@@ -1,0 +1,20 @@
+packages:
+  "framer-motion": "For sleek page transitions and neon UI animations"
+  "date-fns": "For formatting the 30-minute session countdown timers"
+  "clsx": "Utility for constructing tailwind class names"
+  "tailwind-merge": "Utility for merging tailwind classes without style conflicts"
+  "lucide-react": "For UI icons like microphone, camera, and status indicators"
+
+images:
+  - path: "artifacts/ais-and-ears/public/images/hero-matrix.png"
+    description: "Dark moody digital matrix background with faint neon green cascading code and subtle glowing grid lines, highly abstract and cinematic"
+    aspect_ratio: "16:9"
+  - path: "artifacts/ais-and-ears/public/images/ai-eye-ear.png"
+    description: "Cybernetic glowing green eye and soundwave ear integrated into a dark sleek robotic chassis, ultra-modern tech aesthetic, dark background"
+    aspect_ratio: "1:1"
+
+notes:
+  - "The API endpoints are served from /api and wrapped in react-query hooks from @workspace/api-client-react"
+  - "The app relies on Stripe redirect logic, capturing success and session_id from URL search params"
+  - "Media capabilities require HTTPS or localhost to properly request camera/mic permissions"
+  - "OpenAI Realtime API WebSocket simulation is built-in for the 'demo' mode when actual tokens are absent"

@@ -1,15 +1,20 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: AIs&Ears API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: products
+    description: Stripe product listing
+  - name: checkout
+    description: Stripe checkout operations
+  - name: ai
+    description: AI session token operations
 paths:
   /healthz:
     get:
@@ -24,6 +29,102 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /products:
+    get:
+      operationId: getProducts
+      tags: [products]
+      summary: List products with prices
+      description: Returns all active Stripe products with their prices
+      responses:
+        "200":
+          description: Products list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductsResponse"
+
+  /checkout:
+    post:
+      operationId: createCheckout
+      tags: [checkout]
+      summary: Create Stripe checkout session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckoutRequest"
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /checkout/verify:
+    get:
+      operationId: verifyCheckout
+      tags: [checkout]
+      summary: Verify checkout session and grant access
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerifyResponse"
+        "400":
+          description: Invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ai-token:
+    post:
+      operationId: getAiToken
+      tags: [ai]
+      summary: Get ephemeral OpenAI Realtime API token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiTokenRequest"
+      responses:
+        "200":
+          description: Ephemeral token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiTokenResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +135,123 @@ components:
       required:
         - status
 
+    Product:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        prices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Price"
+      required:
+        - id
+        - name
+        - prices
+
+    Price:
+      type: object
+      properties:
+        id:
+          type: string
+        unit_amount:
+          type: integer
+        currency:
+          type: string
+        recurring:
+          type: object
+          nullable: true
+          properties:
+            interval:
+              type: string
+            interval_count:
+              type: integer
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+      required:
+        - id
+        - unit_amount
+        - currency
+
+    ProductsResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+      required:
+        - data
+
+    CheckoutRequest:
+      type: object
+      properties:
+        priceId:
+          type: string
+        tier:
+          type: string
+      required:
+        - priceId
+        - tier
+
+    CheckoutResponse:
+      type: object
+      properties:
+        url:
+          type: string
+      required:
+        - url
+
+    VerifyResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+        tier:
+          type: string
+        sessionId:
+          type: string
+        expiresAt:
+          type: string
+          nullable: true
+      required:
+        - valid
+        - tier
+        - sessionId
+
+    AiTokenRequest:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        tier:
+          type: string
+      required:
+        - sessionId
+        - tier
+
+    AiTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        mode:
+          type: string
+          description: "demo if no API key, live if connected"
+      required:
+        - token
+        - mode
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
