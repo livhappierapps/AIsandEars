@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIs&Ears</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <style>
+    body { margin:0; font-family:sans-serif; text-align:center; background:#111; color:#fff; padding:20px; }
+    h1 { font-size:2.5em; }
+    button { padding:15px 30px; font-size:1.3em; background:#0f8; color:#000; border:none; border-radius:8px; margin:10px; cursor:pointer; }
+    #status { font-weight:bold; color:#f00; }
+    video { display:none; width:100%; max-width:400px; }
+  </style>
+</head>
+<body>
+  <h1>AIs&Ears</h1>
+  <p>Give your AI real eyes & ears—pay to connect.</p>
+
+  <select id="tier">
+    <option value="audio">Audio $5.99/mo</option>
+    <option value="full">Full $10.99/mo</option>
+    <option value="audio30">30min Audio $2.99</option>
+    <option value="full30">30min Full $4.99</option>
+  </select>
+  <br>
+  <button id="connect">Pay & Connect</button>
+  <p id="status">Disconnected</p>
+  <video id="preview" autoplay muted playsinline></video>
+
+  <script>
+    const status = document.getElementById('status');
+    const connectBtn = document.getElementById('connect');
+    let stream, recorder, ws;
+    let timer = null;
+
+    connectBtn.onclick = async () => {
+      const tier = document.getElementById('tier').value;
+      // Fake paywall—replace with Stripe/IAP later (Replit can't do real IAP)
+      if (!confirm(`Pay $${tier.includes('30') ? '2.99 or 4.99' : '5.99 or 10.99'} now?`)) return;
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: tier.includes('full') });
+        document.getElementById('preview').srcObject = stream;
+        status.textContent = 'Connected';
+        status.style.color = '#0f8';
+
+        // Chunk audio
+        recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        recorder.ondataavailable = async e => {
+          if (!e.data.size) return;
+          const arrayBuf = await e.data.arrayBuffer();
+          const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuf)));
+          sendToAI({ type: 'audio', data: base64 });
+        };
+        recorder.start(800); // ~0.8s chunks
+
+        // Video snaps if full
+        if (tier.includes('full')) {
+          const canvas = document.createElement('canvas');
+          const video = document.getElementById('preview');
+          setInterval(async () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            const base64Img = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+            sendToAI({ type: 'video', data: base64Img });
+          }, 5000); // 5s snaps
+        }
+
+        // Session timer for pay-per
+        if (tier.includes('30')) {
+          let secs = 1800; // 30min
+          timer = setInterval(() => {
+            secs--;
+            if (secs <= 0) stopFeed();
+          }, 1000);
+        }
+
+        // Get token from backend
+        const res = await fetch('/get-token', { method: 'POST', body: JSON.stringify({ tier }), headers: {'Content-Type':'application/json'} });
+        const { token } = await res.json();
+        ws = new WebSocket(`wss://api.openai.com/v1/realtime?client_secret=${token}`); // or proxy for Grok
+        ws.onopen = () => console.log('WS open');
+      } catch(e) { status.textContent = 'Perms or pay failed'; }
+    };
+
+    function sendToAI(payload) {
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+    }
+
+    function stopFeed() {
+      recorder?.stop();
+      stream?.getTracks().forEach(t => t.stop());
+      ws?.close();
+      status.textContent = 'Session over';
+      clearInterval(timer);
+    }
+  </script>
+</body>
+</html>
