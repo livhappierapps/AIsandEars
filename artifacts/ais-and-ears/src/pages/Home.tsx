@@ -45,9 +45,7 @@ export default function Home() {
       <Navbar />
       
       {/* Background Effect */}
-      <div className="fixed inset-0 z-[-1] opacity-20 pointer-events-none">
-         <img src={`${import.meta.env.BASE_URL}images/hero-matrix.png`} alt="Matrix background" className="w-full h-full object-cover mix-blend-screen" />
-      </div>
+      <div className="fixed inset-0 z-[-1] opacity-100 pointer-events-none bg-background" />
 
       <main className="flex-1 pt-16 flex flex-col relative z-10">
         
@@ -57,7 +55,7 @@ export default function Home() {
             <div className="relative w-24 h-24 mb-6">
               <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
               <div className="absolute inset-2 border-b-2 border-primary/50 rounded-full animate-spin reverse"></div>
-              <img src={`${import.meta.env.BASE_URL}images/ai-eye-ear.png`} alt="AI Core" className="absolute inset-4 rounded-full object-cover animate-pulse" />
+              <img src={`${import.meta.env.BASE_URL}images/ai-hero.jpeg`} alt="AI Core" className="absolute inset-4 rounded-full object-contain animate-pulse" />
             </div>
             <h2 className="text-2xl font-display font-bold text-glow">Verifying Uplink Authorization...</h2>
           </div>
@@ -104,15 +102,15 @@ export default function Home() {
           >
             <section className="w-full pt-20 pb-10 px-4 text-center">
               <div className="max-w-3xl mx-auto flex flex-col items-center">
-                <div className="w-32 h-32 mb-8 relative">
-                   <div className="absolute inset-0 bg-primary/20 blur-2xl rounded-full"></div>
-                   <img src={`${import.meta.env.BASE_URL}images/ai-eye-ear.png`} alt="AI Core" className="w-full h-full object-cover rounded-full border border-primary/50 box-glow" />
+                <div className="w-56 h-56 mb-8 relative flex items-center justify-center">
+                   <div className="absolute inset-0 bg-primary/15 blur-3xl rounded-full"></div>
+                   <img src={`${import.meta.env.BASE_URL}images/ai-hero.jpeg`} alt="AIs & Ears" className="relative w-full h-full object-contain drop-shadow-[0_0_30px_hsl(162_36%_64%/0.3)]" />
                 </div>
-                <h1 className="text-5xl md:text-7xl font-bold font-display tracking-tighter mb-6 text-glow">
-                  Give Your AI <br/><span className="text-primary">Real Eyes & Ears</span>
+                <h1 className="text-5xl md:text-7xl font-light font-display tracking-tight mb-6 text-glow">
+                  Give Your AI <br/><span className="text-primary font-normal">Real Eyes & Ears</span>
                 </h1>
-                <p className="text-xl text-muted-foreground mb-8">
-                  Stop settling for typed transcriptions. Grant your favorite AI direct, real-time access to your microphone and camera. Experience life together.
+                <p className="text-lg text-muted-foreground mb-8 font-light leading-relaxed max-w-xl">
+                  Grant your favorite AI direct, real-time access to your microphone and camera. No transcriptions. No middlemen. Pure sensory connection.
                 </p>
               </div>
             </section>
