@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;500;600;700&family=Oxanium:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Raleway:wght@200;300;400;500&display=swap');
 @import "tailwindcss";
 
 @theme inline {
@@ -30,8 +30,8 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
 
-  --font-display: 'Oxanium', display;
-  --font-body: 'Chakra Petch', sans-serif;
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'Raleway', sans-serif;
   
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
@@ -41,65 +41,65 @@
 }
 
 :root {
-  /* Dark Moody Neon Green Theme */
-  --background: 140 25% 4%;
-  --foreground: 140 10% 90%;
+  /* Cool Dark Charcoal + Statue of Liberty Verdigris */
+  --background: 228 9% 11%;
+  --foreground: 210 15% 88%;
   
-  --card: 140 20% 6%;
-  --card-foreground: 140 10% 90%;
+  --card: 228 10% 13%;
+  --card-foreground: 210 15% 88%;
   
-  --popover: 140 20% 6%;
-  --popover-foreground: 140 10% 90%;
+  --popover: 228 10% 13%;
+  --popover-foreground: 210 15% 88%;
   
-  --primary: 135 100% 50%;
-  --primary-foreground: 140 100% 5%;
+  --primary: 162 36% 64%;
+  --primary-foreground: 228 9% 8%;
   
-  --secondary: 140 30% 12%;
-  --secondary-foreground: 140 10% 90%;
+  --secondary: 228 9% 17%;
+  --secondary-foreground: 210 15% 88%;
   
-  --muted: 140 15% 15%;
-  --muted-foreground: 140 10% 60%;
+  --muted: 228 9% 19%;
+  --muted-foreground: 210 10% 52%;
   
-  --accent: 135 80% 40%;
-  --accent-foreground: 140 10% 95%;
+  --accent: 162 30% 54%;
+  --accent-foreground: 228 9% 8%;
   
-  --destructive: 0 84% 60%;
+  --destructive: 0 72% 58%;
   --destructive-foreground: 0 0% 100%;
 
-  --border: 135 100% 50% / 0.15;
-  --input: 140 20% 15%;
-  --ring: 135 100% 50%;
+  --border: 162 36% 64% / 0.15;
+  --input: 228 9% 17%;
+  --ring: 162 36% 64%;
 }
 
 @layer base {
   body {
-    @apply bg-background text-foreground font-body antialiased selection:bg-primary/30 selection:text-primary;
+    @apply bg-background text-foreground font-body antialiased selection:bg-primary/20 selection:text-primary;
     background-image: 
-      radial-gradient(circle at 50% 0%, hsl(var(--primary) / 0.05) 0%, transparent 50%),
-      linear-gradient(to bottom, transparent, hsl(var(--background)) 100%);
+      radial-gradient(ellipse at 50% 0%, hsl(var(--primary) / 0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 80%, hsl(var(--primary) / 0.03) 0%, transparent 50%);
     background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-display tracking-tight;
+    @apply font-display tracking-tight font-light;
   }
 }
 
 @layer utilities {
   .text-glow {
-    text-shadow: 0 0 10px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.3);
+    text-shadow: 0 0 20px hsl(var(--primary) / 0.4), 0 0 40px hsl(var(--primary) / 0.2);
   }
   
   .box-glow {
-    box-shadow: 0 0 15px hsl(var(--primary) / 0.15), inset 0 0 10px hsl(var(--primary) / 0.05);
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.12), inset 0 0 12px hsl(var(--primary) / 0.04);
   }
   
   .box-glow-strong {
-    box-shadow: 0 0 20px hsl(var(--primary) / 0.3), inset 0 0 15px hsl(var(--primary) / 0.1);
+    box-shadow: 0 0 30px hsl(var(--primary) / 0.25), inset 0 0 18px hsl(var(--primary) / 0.08);
   }
   
   .glass-panel {
-    @apply bg-card/80 backdrop-blur-md border border-primary/20;
+    @apply bg-card/70 backdrop-blur-md border border-primary/15;
   }
   
   .scanline {
@@ -113,11 +113,11 @@
     background: linear-gradient(
       to bottom,
       transparent 0%,
-      hsl(var(--primary) / 0.05) 50%,
+      hsl(var(--primary) / 0.03) 50%,
       transparent 100%
     );
     background-size: 100% 8px;
-    animation: scanline-scroll 10s linear infinite;
+    animation: scanline-scroll 12s linear infinite;
     pointer-events: none;
     z-index: 10;
   }
