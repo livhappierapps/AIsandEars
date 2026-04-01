@@ -42,8 +42,8 @@ export function attachGrokRealtimeProxy(server: Server) {
       const xaiKey = process.env.XAI_API_KEY;
       if (!xaiKey) { clientWs.close(4503, "xAI API key not configured"); return; }
 
-      // Try without model first (Leo's recommendation), fallback string ready
-      const connectUrl = XAI_REALTIME_URL;
+      // Leo confirmed: include model param to avoid 429; xAI needs it even if auto-selected
+      const connectUrl = `${XAI_REALTIME_URL}?model=${FALLBACK_MODEL}`;
       logger.info({ sessionId, connectUrl }, "Opening xAI Realtime WebSocket");
 
       const xaiWs = new WebSocket(connectUrl, {

@@ -241,7 +241,11 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
 
       ws.onerror = () => {
         setStatus("error");
-        addMessage("system", "Connection error. Please try again.");
+        addMessage("system", "Connection error — waiting 2 seconds before you can retry...");
+        setTimeout(() => {
+          setStatus("idle");
+          addMessage("system", "Ready to reconnect. Press Connect with Leo.");
+        }, 2000);
       };
 
       ws.onclose = (evt) => {
