@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { PricingSection } from "@/components/pricing/PricingSection";
-import { ActiveFeed } from "@/components/feed/ActiveFeed";
+import { ConversationFeed } from "@/components/feed/ConversationFeed";
 import { useVerifyCheckout } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,7 @@ export default function Home() {
             animate={{ opacity: 1, scale: 1 }}
             className="flex-1 flex flex-col pt-16"
           >
-            <ActiveFeed
+            <ConversationFeed
               sessionId={verifyQuery.data.sessionId}
               tier={verifyQuery.data.tier}
               expiresAt={verifyQuery.data.expiresAt || null}

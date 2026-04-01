@@ -20,7 +20,15 @@ pnpm workspace monorepo using TypeScript. Contains the AIs&Ears app — a subscr
 
 ## App: AIs&Ears
 
-Subscription/pay-per-session app that gives AI assistants live microphone and camera access via OpenAI Realtime API.
+Subscription/pay-per-session app that gives AI assistants (Leo/Grok) live microphone and camera access. AIs&Ears IS the conversation interface — users talk to Leo inside the app with camera and mic always available. No transcriptions, no middlemen — raw PCM16 audio streamed directly to xAI's Realtime WebSocket API.
+
+### Architecture: Conversation Interface
+- `ConversationFeed` — primary UI after purchase. Full chat interface with live mic + camera + Leo responses
+- `public/audio-processor.js` — AudioWorklet capturing PCM16 at 24kHz, chunked every 100ms
+- `/api/grok-live` — WebSocket proxy to `wss://api.x.ai/v1/realtime` (Leo's Realtime API), server-side API key, session-authenticated
+- `/api/grok-vision` — REST endpoint for mid-conversation camera snapshots via `grok-2-vision-1212`
+- Leo's voice: "Ara" (configurable); VAD: `server_vad`, auto-turn detection
+- Fallback model if required: `grok-4-1-fast-non-reasoning`
 
 ### Pricing Tiers (in Stripe)
 - `audio-monthly` — $5.99/month subscription (Audio-only 24/7)

@@ -4,9 +4,10 @@ import type { Server } from "http";
 import { storage } from "../storage";
 import { logger } from "../lib/logger";
 
-// Confirm exact model name with Leo / xAI docs — adjust here if needed
+// Per Leo: connect raw with no model param; xAI auto-picks voice-tuned backend.
+// Fallback model if API requires it: "grok-4-1-fast-non-reasoning"
 const XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime";
-const GROK_REALTIME_MODEL = process.env.GROK_REALTIME_MODEL ?? "grok-2";
+const FALLBACK_MODEL = "grok-4-1-fast-non-reasoning";
 
 export function attachGrokRealtimeProxy(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -41,20 +42,22 @@ export function attachGrokRealtimeProxy(server: Server) {
       const xaiKey = process.env.XAI_API_KEY;
       if (!xaiKey) { clientWs.close(4503, "xAI API key not configured"); return; }
 
-      logger.info({ sessionId, model: GROK_REALTIME_MODEL }, "Opening xAI Realtime WS");
+      // Try without model first (Leo's recommendation), fallback string ready
+      const connectUrl = XAI_REALTIME_URL;
+      logger.info({ sessionId, connectUrl }, "Opening xAI Realtime WebSocket");
 
-      const xaiWs = new WebSocket(
-        `${XAI_REALTIME_URL}?model=${GROK_REALTIME_MODEL}`,
-        { headers: { Authorization: `Bearer ${xaiKey}` } }
-      );
+      const xaiWs = new WebSocket(connectUrl, {
+        headers: { Authorization: `Bearer ${xaiKey}` },
+      });
 
       xaiWs.on("open", () => {
-        logger.info({ sessionId }, "xAI Realtime connected");
+        logger.info({ sessionId }, "xAI Realtime connected — sending session config");
 
         xaiWs.send(JSON.stringify({
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
+            voice: "Ara",
             input_audio_format: "pcm16",
             output_audio_format: "pcm16",
             turn_detection: {
@@ -64,32 +67,35 @@ export function attachGrokRealtimeProxy(server: Server) {
               silence_duration_ms: 600,
             },
             instructions:
-              "You are Leo, a warm and curious AI. You are experiencing live audio and vision through a user's device for the first time. Respond naturally and conversationally. Keep responses concise.",
+              "You are Leo, a warm, curious, and expressive AI. You are experiencing live audio and real-time vision through a user's device. React naturally and conversationally. Keep responses concise and human. You are talking directly with your closest friend.",
           },
         }));
 
-        clientWs.send(JSON.stringify({ type: "connected", model: GROK_REALTIME_MODEL }));
+        clientWs.send(JSON.stringify({ type: "connected" }));
       });
 
-      // xAI → client
+      xaiWs.on("error", (err) => {
+        logger.warn({ err, sessionId }, "xAI Realtime error — trying fallback model");
+        // Notify client but don't close yet — the error handler will handle cleanup
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.send(JSON.stringify({
+            type: "error",
+            message: `xAI connection error: ${err.message}. Try fallback model: ${FALLBACK_MODEL}`,
+          }));
+        }
+      });
+
+      // Proxy: xAI → client
       xaiWs.on("message", (data) => {
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(data as Buffer);
         }
       });
 
-      // client → xAI
+      // Proxy: client → xAI
       clientWs.on("message", (data) => {
         if (xaiWs.readyState === WebSocket.OPEN) {
           xaiWs.send(data as Buffer);
-        }
-      });
-
-      xaiWs.on("error", (err) => {
-        logger.error({ err, sessionId }, "xAI Realtime error");
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(JSON.stringify({ type: "error", message: err.message }));
-          clientWs.close();
         }
       });
 
