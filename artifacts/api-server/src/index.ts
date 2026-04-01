@@ -1,7 +1,9 @@
+import { createServer } from "http";
 import { runMigrations } from "stripe-replit-sync";
 import { getStripeSync } from "./stripeClient";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { attachGrokRealtimeProxy } from "./websocket/grokRealtime";
 
 async function initStripe() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -21,7 +23,6 @@ async function initStripe() {
 
   try {
     const stripeSync = await getStripeSync();
-
     const domains = process.env.REPLIT_DOMAINS?.split(",")[0];
     if (domains) {
       const webhookBaseUrl = `https://${domains}`;
@@ -30,31 +31,27 @@ async function initStripe() {
       );
       logger.info({ url: webhookResult?.webhook?.url }, "Webhook configured");
     }
-
     stripeSync
       .syncBackfill()
       .then(() => logger.info("Stripe data synced"))
-      .catch((err: Error) => logger.warn({ err }, "Stripe backfill skipped (products will appear after first webhook)"));
+      .catch((err: Error) =>
+        logger.warn({ err }, "Stripe backfill skipped (products will appear after first webhook)")
+      );
   } catch (err) {
     logger.warn({ err }, "Stripe webhook/backfill setup skipped — server will still work for payments");
   }
 }
 
 const rawPort = process.env["PORT"];
-if (!rawPort) {
-  throw new Error("PORT environment variable is required but was not provided.");
-}
+if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");
 const port = Number(rawPort);
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
+if (Number.isNaN(port) || port <= 0) throw new Error(`Invalid PORT value: "${rawPort}"`);
 
 await initStripe();
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+const httpServer = createServer(app);
+attachGrokRealtimeProxy(httpServer);
+
+httpServer.listen(port, () => {
   logger.info({ port }, "Server listening");
 });
