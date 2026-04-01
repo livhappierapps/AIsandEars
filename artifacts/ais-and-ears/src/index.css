@@ -41,33 +41,33 @@
 }
 
 :root {
-  /* Cool Dark Charcoal + Statue of Liberty Verdigris */
-  --background: 228 9% 11%;
-  --foreground: 210 15% 88%;
+  /* Deep Navy-Teal + Statue of Liberty Verdigris */
+  --background: 215 45% 13%;
+  --foreground: 210 20% 90%;
   
-  --card: 228 10% 13%;
-  --card-foreground: 210 15% 88%;
+  --card: 215 42% 16%;
+  --card-foreground: 210 20% 90%;
   
-  --popover: 228 10% 13%;
-  --popover-foreground: 210 15% 88%;
+  --popover: 215 42% 16%;
+  --popover-foreground: 210 20% 90%;
   
   --primary: 162 36% 64%;
-  --primary-foreground: 228 9% 8%;
+  --primary-foreground: 215 45% 8%;
   
-  --secondary: 228 9% 17%;
-  --secondary-foreground: 210 15% 88%;
+  --secondary: 215 38% 20%;
+  --secondary-foreground: 210 20% 90%;
   
-  --muted: 228 9% 19%;
-  --muted-foreground: 210 10% 52%;
+  --muted: 215 32% 22%;
+  --muted-foreground: 215 18% 58%;
   
   --accent: 162 30% 54%;
-  --accent-foreground: 228 9% 8%;
+  --accent-foreground: 215 45% 8%;
   
   --destructive: 0 72% 58%;
   --destructive-foreground: 0 0% 100%;
 
   --border: 162 36% 64% / 0.15;
-  --input: 228 9% 17%;
+  --input: 215 38% 20%;
   --ring: 162 36% 64%;
 }
 
