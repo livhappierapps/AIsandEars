@@ -1,80 +1,27 @@
 import Stripe from 'stripe';
 
-let connectionSettings: any;
-
-async function getCredentialsFromConnector() {
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-      ? 'depl ' + process.env.WEB_REPL_RENEWAL
-      : null;
-
-  if (!xReplitToken || !hostname) throw new Error('Replit connector env not available');
-
-  const connectorName = 'stripe';
-  const isProduction = process.env.REPLIT_DEPLOYMENT === '1';
-  const targetEnvironment = isProduction ? 'production' : 'development';
-
-  const url = new URL(`https://${hostname}/api/v2/connection`);
-  url.searchParams.set('include_secrets', 'true');
-  url.searchParams.set('connector_names', connectorName);
-  url.searchParams.set('environment', targetEnvironment);
-
-  const response = await fetch(url.toString(), {
-    headers: { 'Accept': 'application/json', 'X-Replit-Token': xReplitToken },
-  });
-
-  const data = await response.json();
-  connectionSettings = data.items?.[0];
-
-  if (!connectionSettings?.settings?.publishable || !connectionSettings?.settings?.secret) {
-    throw new Error(`Stripe ${targetEnvironment} connection not found`);
-  }
-
-  return {
-    publishableKey: connectionSettings.settings.publishable,
-    secretKey: connectionSettings.settings.secret,
-  };
+function getEnvSecretKey(): string {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error("STRIPE_SECRET_KEY environment variable is not set");
+  if (key.startsWith("mk_")) throw new Error("STRIPE_SECRET_KEY is a restricted key (mk_). Please use your sk_test_ or sk_live_ secret key from https://dashboard.stripe.com/test/apikeys");
+  return key;
 }
 
-async function getCredentials() {
-  // Prefer direct env vars (more reliable than Replit connector)
-  const envSecret = process.env.STRIPE_SECRET_KEY;
-  const envPublishable = process.env.STRIPE_PUBLISHABLE_KEY;
-  if (envSecret && envPublishable) {
-    return { secretKey: envSecret, publishableKey: envPublishable };
-  }
-
-  // Fall back to Replit Stripe connector
-  return getCredentialsFromConnector();
+function getEnvPublishableKey(): string {
+  const key = process.env.STRIPE_PUBLISHABLE_KEY;
+  if (!key) throw new Error("STRIPE_PUBLISHABLE_KEY environment variable is not set");
+  return key;
 }
 
 export async function getUncachableStripeClient() {
-  const { secretKey } = await getCredentials();
+  const secretKey = getEnvSecretKey();
   return new Stripe(secretKey, { apiVersion: '2025-08-27.basil' as any });
 }
 
 export async function getStripePublishableKey() {
-  const { publishableKey } = await getCredentials();
-  return publishableKey;
+  return getEnvPublishableKey();
 }
 
 export async function getStripeSecretKey() {
-  const { secretKey } = await getCredentials();
-  return secretKey;
-}
-
-let stripeSync: any = null;
-
-export async function getStripeSync() {
-  if (!stripeSync) {
-    const { StripeSync } = await import('stripe-replit-sync');
-    const secretKey = await getStripeSecretKey();
-    stripeSync = new StripeSync({
-      poolConfig: { connectionString: process.env.DATABASE_URL!, max: 2 },
-      stripeSecretKey: secretKey,
-    });
-  }
-  return stripeSync;
+  return getEnvSecretKey();
 }
