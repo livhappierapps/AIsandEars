@@ -21,8 +21,8 @@ async function initStripeSchema() {
 
 async function seedProductsFromStripe() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey || secretKey.startsWith("mk_")) {
-    logger.warn("STRIPE_SECRET_KEY missing or is a restricted key (mk_) — skipping product seed");
+  if (!secretKey) {
+    logger.warn("STRIPE_SECRET_KEY missing — skipping product seed");
     return;
   }
 

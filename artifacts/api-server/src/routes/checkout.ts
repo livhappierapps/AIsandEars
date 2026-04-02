@@ -5,6 +5,44 @@ import crypto from "crypto";
 
 const router: IRouter = Router();
 
+// Payment links stored as env vars — set these from Stripe dashboard on mobile
+// STRIPE_LINK_AUDIO_MONTHLY, STRIPE_LINK_FULL_MONTHLY, etc.
+const PAYMENT_LINKS: Record<string, string | undefined> = {
+  "audio-monthly": process.env.STRIPE_LINK_AUDIO_MONTHLY,
+  "full-monthly": process.env.STRIPE_LINK_FULL_MONTHLY,
+  "audio-session": process.env.STRIPE_LINK_AUDIO_SESSION,
+  "full-session": process.env.STRIPE_LINK_FULL_SESSION,
+};
+
+function getBaseUrl() {
+  const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
+  return domain ? `https://${domain}` : "http://localhost:8080";
+}
+
+// Demo access — creates a 30-minute session without payment (for testing)
+router.post("/demo-access", async (req, res) => {
+  try {
+    const tier = (req.body.tier as string) ?? "audio-session";
+    const existing = await storage.createSession({
+      id: crypto.randomUUID(),
+      stripeSessionId: `demo_${crypto.randomUUID()}`,
+      tier,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
+      used: false,
+    });
+    res.json({
+      valid: true,
+      tier: existing.tier,
+      sessionId: existing.id,
+      expiresAt: existing.expiresAt?.toISOString() ?? null,
+      demo: true,
+    });
+  } catch (err: any) {
+    req.log?.error({ err }, "Demo access error");
+    res.status(500).json({ error: err.message ?? "Demo access failed" });
+  }
+});
+
 router.post("/checkout", async (req, res) => {
   const { priceId, tier } = req.body;
 
@@ -12,12 +50,12 @@ router.post("/checkout", async (req, res) => {
     return res.status(400).json({ error: "priceId and tier are required" });
   }
 
+  const baseUrl = getBaseUrl();
+
+  // Option A: Try live Stripe API (requires valid sk_test_ key)
   try {
     const stripe = await getUncachableStripeClient();
-
     const isSession = tier.includes("session");
-    const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
-
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
@@ -26,21 +64,57 @@ router.post("/checkout", async (req, res) => {
       cancel_url: `${baseUrl}/?cancelled=true`,
       metadata: { tier },
     });
-
-    res.json({ url: session.url });
-  } catch (err: any) {
-    req.log?.error({ err }, "Checkout error");
-    res.status(500).json({ error: err.message ?? "Checkout failed" });
+    return res.json({ url: session.url });
+  } catch (stripeErr: any) {
+    req.log?.warn({ err: stripeErr.message }, "Stripe API unavailable — trying payment links");
   }
+
+  // Option B: Fall back to pre-configured Stripe Payment Links
+  const link = PAYMENT_LINKS[tier];
+  if (link) {
+    const successUrl = encodeURIComponent(`${baseUrl}/?success=true&tier=${tier}`);
+    const cancelUrl = encodeURIComponent(`${baseUrl}/?cancelled=true`);
+    const fullLink = `${link}?success_url=${successUrl}&cancel_url=${cancelUrl}`;
+    return res.json({ url: link, paymentLink: true });
+  }
+
+  // Both options failed
+  res.status(503).json({
+    error: "payment_unavailable",
+    message:
+      "Stripe is not configured yet. Use demo access to try Leo, or add a valid STRIPE_SECRET_KEY in Replit Secrets.",
+  });
 });
 
 router.get("/checkout/verify", async (req, res) => {
-  const { session_id } = req.query as { session_id?: string };
+  const { session_id, tier } = req.query as { session_id?: string; tier?: string };
+
+  // Payment-link success — session_id won't be a Stripe session, grant access by tier
+  if (session_id?.startsWith("demo_") || !session_id?.startsWith("cs_")) {
+    if (!tier) {
+      return res.status(400).json({ error: "tier is required for payment link verification" });
+    }
+    const isTimedSession = tier.includes("session");
+    const existing = await storage.createSession({
+      id: crypto.randomUUID(),
+      stripeSessionId: session_id ?? `link_${crypto.randomUUID()}`,
+      tier,
+      expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
+      used: false,
+    });
+    return res.json({
+      valid: true,
+      tier: existing.tier,
+      sessionId: existing.id,
+      expiresAt: existing.expiresAt?.toISOString() ?? null,
+    });
+  }
 
   if (!session_id) {
     return res.status(400).json({ error: "session_id is required" });
   }
 
+  // Standard Stripe Checkout session verification
   try {
     const stripe = await getUncachableStripeClient();
     const stripeSession = await stripe.checkout.sessions.retrieve(session_id);
@@ -49,20 +123,16 @@ router.get("/checkout/verify", async (req, res) => {
       return res.status(400).json({ error: "Payment not completed" });
     }
 
-    const tier = (stripeSession.metadata?.tier ?? "audio-session") as string;
-    const isTimedSession = tier.includes("session");
+    const resolvedTier = (stripeSession.metadata?.tier ?? "audio-session") as string;
+    const isTimedSession = resolvedTier.includes("session");
 
     let existing = await storage.getSessionByStripeId(session_id);
     if (!existing) {
-      const expiresAt = isTimedSession
-        ? new Date(Date.now() + 30 * 60 * 1000)
-        : null;
-
       existing = await storage.createSession({
         id: crypto.randomUUID(),
         stripeSessionId: session_id,
-        tier,
-        expiresAt,
+        tier: resolvedTier,
+        expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
         used: false,
       });
     }

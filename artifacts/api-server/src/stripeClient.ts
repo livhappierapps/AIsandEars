@@ -1,27 +1,21 @@
 import Stripe from 'stripe';
 
-function getEnvSecretKey(): string {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error("STRIPE_SECRET_KEY environment variable is not set");
-  if (key.startsWith("mk_")) throw new Error("STRIPE_SECRET_KEY is a restricted key (mk_). Please use your sk_test_ or sk_live_ secret key from https://dashboard.stripe.com/test/apikeys");
-  return key;
-}
-
-function getEnvPublishableKey(): string {
-  const key = process.env.STRIPE_PUBLISHABLE_KEY;
-  if (!key) throw new Error("STRIPE_PUBLISHABLE_KEY environment variable is not set");
-  return key;
-}
-
-export async function getUncachableStripeClient() {
-  const secretKey = getEnvSecretKey();
+// Use STRIPE_SECRET_KEY directly — mk_ (restricted) keys can have checkout permissions
+// depending on how they were configured in the Stripe dashboard
+export async function getUncachableStripeClient(): Promise<Stripe> {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    throw new Error('STRIPE_SECRET_KEY is not set. Please add it in Replit Secrets.');
+  }
   return new Stripe(secretKey, { apiVersion: '2025-08-27.basil' as any });
 }
 
-export async function getStripePublishableKey() {
-  return getEnvPublishableKey();
+export async function getStripePublishableKey(): Promise<string> {
+  return process.env.STRIPE_PUBLISHABLE_KEY ?? '';
 }
 
-export async function getStripeSecretKey() {
-  return getEnvSecretKey();
+export async function getStripeSecretKey(): Promise<string> {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) throw new Error('STRIPE_SECRET_KEY not set');
+  return secretKey;
 }
