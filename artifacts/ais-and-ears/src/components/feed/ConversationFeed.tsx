@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Square, Mic, MicOff, Eye, Camera, Activity, ShieldAlert, RefreshCcw, Radio } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatTime } from "@/lib/utils";
+import { useSettings } from "@/context/SettingsContext";
 
 interface ConversationFeedProps {
   sessionId: string;
@@ -26,6 +27,9 @@ const VISION_INTERVAL_MS = 12_000;
 export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: ConversationFeedProps) {
   const isFull = tier.includes("full");
   const { toast } = useToast();
+  const { settings } = useSettings();
+  const useCam = isFull && settings.cameraEnabled;
+  const useMic = settings.micEnabled;
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -107,8 +111,9 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [micActive]);
 
-  // Play PCM16 audio from Leo
+  // Play PCM16 audio from Leo — skipped if verbal responses are off
   const playAudioChunk = useCallback((base64: string) => {
+    if (!settings.verbalResponses) return;
     const ctx = audioCtxRef.current;
     if (!ctx) return;
     const binary = atob(base64);
@@ -123,7 +128,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     playbackQueueRef.current.push(buffer);
 
     if (!isPlayingRef.current) drainPlaybackQueue();
-  }, []);
+  }, [settings.verbalResponses]);
 
   const drainPlaybackQueue = useCallback(() => {
     const ctx = audioCtxRef.current;
@@ -198,15 +203,17 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     addMessage("system", "Requesting microphone access...");
 
     try {
-      // Get media
+      // Get media — respect settings overrides
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true },
-        video: isFull ? { facingMode: "user", width: 640, height: 360 } : false,
+        audio: useMic
+          ? { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+          : false,
+        video: useCam ? { facingMode: "user", width: 640, height: 360 } : false,
       });
       mediaStreamRef.current = stream;
 
       // Setup video preview
-      if (videoRef.current && isFull) {
+      if (videoRef.current && useCam) {
         const videoStream = new MediaStream(stream.getVideoTracks());
         videoRef.current.srcObject = videoStream;
       }
@@ -272,7 +279,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       setStatus("error");
       addMessage("system", `Setup failed: ${err.message}`);
     }
-  }, [sessionId, isFull, addMessage, handleXaiMessage]);
+  }, [sessionId, useCam, useMic, addMessage, handleXaiMessage]);
 
   // Capture & send camera frame to Leo (via REST vision endpoint)
   const shareCamera = useCallback(async () => {
