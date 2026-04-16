@@ -1,10 +1,6 @@
 import { PricingSection } from "@/components/pricing/PricingSection";
 
-interface PackagesTabProps {
-  onDemoAccess: (sessionData: any) => void;
-}
-
-export function PackagesTab({ onDemoAccess }: PackagesTabProps) {
+export function PackagesTab() {
   return (
     <div className="flex-1 flex flex-col overflow-y-auto pb-4">
       <div className="px-6 pt-8 pb-2 text-center">
@@ -13,7 +9,7 @@ export function PackagesTab({ onDemoAccess }: PackagesTabProps) {
           Choose a subscription or a single session. More add-ons coming soon.
         </p>
       </div>
-      <PricingSection onDemoAccess={onDemoAccess} />
+      <PricingSection />
     </div>
   );
 }

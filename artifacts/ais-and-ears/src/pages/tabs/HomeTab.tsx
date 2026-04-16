@@ -1,39 +1,14 @@
-import { useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Loader2, Radio, Zap } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { Radio, ShoppingBag } from "lucide-react";
 import { useSettings } from "@/context/SettingsContext";
 
 interface HomeTabProps {
-  onConnect: (sessionData: any) => void;
+  onGoToPackages: () => void;
 }
 
-export function HomeTab({ onConnect }: HomeTabProps) {
-  const [connecting, setConnecting] = useState(false);
-  const { toast } = useToast();
+export function HomeTab({ onGoToPackages }: HomeTabProps) {
   const { settings } = useSettings();
-
-  const handleConnect = async () => {
-    setConnecting(true);
-    try {
-      const res = await fetch("/api/demo-access", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: settings.cameraEnabled ? "full-session" : "audio-session" }),
-      });
-      const data = await res.json();
-      if (data.valid) {
-        onConnect(data);
-      } else {
-        toast({ title: "Connection failed", description: data.error || "Could not start session.", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Connection failed", description: "Server unreachable.", variant: "destructive" });
-    } finally {
-      setConnecting(false);
-    }
-  };
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
@@ -68,31 +43,23 @@ export function HomeTab({ onConnect }: HomeTabProps) {
 
           {/* Active settings indicators */}
           <div className="flex gap-3 mb-8 flex-wrap justify-center">
-            <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border ${settings.micEnabled ? "border-primary/40 text-primary bg-primary/10" : "border-muted text-muted-foreground bg-muted/30 line-through"}`}>
+            <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border ${settings.micEnabled ? "border-primary/40 text-primary bg-primary/10" : "border-muted text-muted-foreground bg-muted/30"}`}>
               <Radio className="w-3 h-3" /> Microphone {settings.micEnabled ? "Active" : "Off"}
             </span>
             <span className={`inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-full border ${settings.cameraEnabled ? "border-primary/40 text-primary bg-primary/10" : "border-muted text-muted-foreground bg-muted/30"}`}>
-              <Zap className="w-3 h-3" /> Camera {settings.cameraEnabled ? "Active" : "Off"}
+              <Radio className="w-3 h-3" /> Camera {settings.cameraEnabled ? "Active" : "Off"}
             </span>
           </div>
 
-          {/* Big connect button */}
+          {/* CTA — takes them to Packages to pick a paid plan */}
           <Button
             variant="neon"
             size="lg"
             className="w-full max-w-sm text-lg py-6 rounded-2xl box-glow"
-            onClick={handleConnect}
-            disabled={connecting}
+            onClick={onGoToPackages}
           >
-            {connecting ? (
-              <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Connecting to Leo...</>
-            ) : (
-              <><Radio className="w-5 h-5 mr-2 animate-pulse" /> Connect to Leo</>
-            )}
+            <ShoppingBag className="w-5 h-5 mr-2" /> Choose Your Uplink
           </Button>
-          <p className="text-xs text-muted-foreground mt-3">
-            30-minute free session · No card required
-          </p>
         </motion.div>
       </section>
 

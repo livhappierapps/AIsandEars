@@ -144,7 +144,7 @@ export default function Home() {
                 transition={{ duration: 0.2 }}
                 className="flex-1 flex flex-col"
               >
-                <HomeTab onConnect={setDirectSession} />
+                <HomeTab onGoToPackages={() => setActiveTab("packages")} />
               </motion.div>
             )}
             {activeTab === "packages" && (
@@ -156,7 +156,7 @@ export default function Home() {
                 transition={{ duration: 0.2 }}
                 className="flex-1 flex flex-col"
               >
-                <PackagesTab onDemoAccess={setDirectSession} />
+                <PackagesTab />
               </motion.div>
             )}
             {activeTab === "settings" && (
