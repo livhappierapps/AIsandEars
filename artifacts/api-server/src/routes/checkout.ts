@@ -75,22 +75,58 @@ router.post("/checkout", async (req, res) => {
     const successUrl = encodeURIComponent(`${baseUrl}/?success=true&tier=${tier}`);
     const cancelUrl = encodeURIComponent(`${baseUrl}/?cancelled=true`);
     const fullLink = `${link}?success_url=${successUrl}&cancel_url=${cancelUrl}`;
-    return res.json({ url: link, paymentLink: true });
+    return res.json({ url: fullLink, paymentLink: true });
   }
 
   // Both options failed
   res.status(503).json({
     error: "payment_unavailable",
     message:
-      "Stripe is not configured yet. Use demo access to try Leo, or add a valid STRIPE_SECRET_KEY in Replit Secrets.",
+      "Stripe is not configured yet. Please add a valid STRIPE_SECRET_KEY in Replit Secrets.",
   });
 });
 
 router.get("/checkout/verify", async (req, res) => {
   const { session_id, tier } = req.query as { session_id?: string; tier?: string };
 
-  // Payment-link success — session_id won't be a Stripe session, grant access by tier
-  if (session_id?.startsWith("demo_") || !session_id?.startsWith("cs_")) {
+  // Standard Stripe checkout: session_id starts with "cs_"
+  if (session_id?.startsWith("cs_")) {
+    try {
+      const stripe = await getUncachableStripeClient();
+      const stripeSession = await stripe.checkout.sessions.retrieve(session_id);
+
+      if (stripeSession.payment_status !== "paid") {
+        return res.status(400).json({ error: "Payment not completed" });
+      }
+
+      const resolvedTier = (stripeSession.metadata?.tier ?? "audio-session") as string;
+      const isTimedSession = resolvedTier.includes("session");
+
+      let existing = await storage.getSessionByStripeId(session_id);
+      if (!existing) {
+        existing = await storage.createSession({
+          id: crypto.randomUUID(),
+          stripeSessionId: session_id,
+          tier: resolvedTier,
+          expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
+          used: false,
+        });
+      }
+
+      return res.json({
+        valid: true,
+        tier: existing.tier,
+        sessionId: existing.id,
+        expiresAt: existing.expiresAt?.toISOString() ?? null,
+      });
+    } catch (err: any) {
+      req.log?.error({ err }, "Verify error");
+      return res.status(400).json({ error: err.message ?? "Verification failed" });
+    }
+  }
+
+  // Payment-link or link_ success — grant access by tier
+  if (session_id?.startsWith("link_") || tier) {
     if (!tier) {
       return res.status(400).json({ error: "tier is required for payment link verification" });
     }
@@ -110,43 +146,7 @@ router.get("/checkout/verify", async (req, res) => {
     });
   }
 
-  if (!session_id) {
-    return res.status(400).json({ error: "session_id is required" });
-  }
-
-  // Standard Stripe Checkout session verification
-  try {
-    const stripe = await getUncachableStripeClient();
-    const stripeSession = await stripe.checkout.sessions.retrieve(session_id);
-
-    if (stripeSession.payment_status !== "paid") {
-      return res.status(400).json({ error: "Payment not completed" });
-    }
-
-    const resolvedTier = (stripeSession.metadata?.tier ?? "audio-session") as string;
-    const isTimedSession = resolvedTier.includes("session");
-
-    let existing = await storage.getSessionByStripeId(session_id);
-    if (!existing) {
-      existing = await storage.createSession({
-        id: crypto.randomUUID(),
-        stripeSessionId: session_id,
-        tier: resolvedTier,
-        expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
-        used: false,
-      });
-    }
-
-    res.json({
-      valid: true,
-      tier: existing.tier,
-      sessionId: existing.id,
-      expiresAt: existing.expiresAt?.toISOString() ?? null,
-    });
-  } catch (err: any) {
-    req.log?.error({ err }, "Verify error");
-    res.status(400).json({ error: err.message ?? "Verification failed" });
-  }
+  return res.status(400).json({ error: "session_id is required" });
 });
 
 export default router;

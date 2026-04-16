@@ -68,6 +68,9 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Use a ref to always call the latest handleEnd without stale closure
+  const handleEndRef = useRef<() => void>(() => {});
+
   // Session timer
   useEffect(() => {
     if (!expiresAt) return;
@@ -75,7 +78,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     const iv = setInterval(() => {
       const diff = Math.max(0, Math.floor((target - Date.now()) / 1000));
       setTimeRemaining(diff);
-      if (diff === 0) { clearInterval(iv); handleEnd(); }
+      if (diff === 0) { clearInterval(iv); handleEndRef.current(); }
     }, 1000);
     return () => clearInterval(iv);
   }, [expiresAt]);
@@ -200,39 +203,42 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   // Connect to Leo
   const handleConnect = useCallback(async () => {
     setStatus("connecting");
-    addMessage("system", "Requesting microphone access...");
+    addMessage("system", useMic ? "Requesting microphone access..." : "Connecting to Leo...");
 
     try {
-      // Get media — respect settings overrides
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: useMic
-          ? { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
-          : false,
-        video: useCam ? { facingMode: "user", width: 640, height: 360 } : false,
-      });
-      mediaStreamRef.current = stream;
-
-      // Setup video preview
-      if (videoRef.current && useCam) {
-        const videoStream = new MediaStream(stream.getVideoTracks());
-        videoRef.current.srcObject = videoStream;
-      }
-
-      // Setup audio context + worklet
+      // Setup audio context + worklet for PCM capture (only if mic is enabled)
       const ctx = new AudioContext({ sampleRate: 24000 });
       audioCtxRef.current = ctx;
-      await ctx.audioWorklet.addModule(`${import.meta.env.BASE_URL}audio-processor.js`);
 
-      const micStream = new MediaStream(stream.getAudioTracks());
-      micStreamRef.current = micStream;
-      const micSource = ctx.createMediaStreamSource(micStream);
-      const workletNode = new AudioWorkletNode(ctx, "pcm16-processor");
-      micSource.connect(workletNode);
-      workletNode.connect(ctx.destination);
-      workletNodeRef.current = workletNode;
+      if (useMic || useCam) {
+        // Only call getUserMedia when at least one media type is requested
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: useMic
+            ? { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+            : false,
+          video: useCam ? { facingMode: "user", width: 640, height: 360 } : false,
+        });
+        mediaStreamRef.current = stream;
 
-      setMicActive(true);
-      addMessage("system", "Microphone active. Connecting to Leo...");
+        // Setup video preview
+        if (videoRef.current && useCam) {
+          const videoStream = new MediaStream(stream.getVideoTracks());
+          videoRef.current.srcObject = videoStream;
+        }
+
+        if (useMic && stream.getAudioTracks().length > 0) {
+          await ctx.audioWorklet.addModule(`${import.meta.env.BASE_URL}audio-processor.js`);
+          const micStream = new MediaStream(stream.getAudioTracks());
+          micStreamRef.current = micStream;
+          const micSource = ctx.createMediaStreamSource(micStream);
+          const workletNode = new AudioWorkletNode(ctx, "pcm16-processor");
+          micSource.connect(workletNode);
+          workletNode.connect(ctx.destination);
+          workletNodeRef.current = workletNode;
+          setMicActive(true);
+          addMessage("system", "Microphone active. Connecting to Leo...");
+        }
+      }
 
       // Open WebSocket
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -263,16 +269,18 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         setMicActive(false);
       };
 
-      // Stream mic audio
-      workletNode.port.onmessage = (e: MessageEvent) => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        const int16 = new Int16Array(e.data);
-        const bytes = new Uint8Array(int16.buffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-        const b64 = btoa(binary);
-        ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
-      };
+      // Stream mic audio — only if worklet was set up
+      if (workletNodeRef.current) {
+        workletNodeRef.current.port.onmessage = (e: MessageEvent) => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          const int16 = new Int16Array(e.data);
+          const bytes = new Uint8Array(int16.buffer);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+          const b64 = btoa(binary);
+          ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+        };
+      }
 
     } catch (err: any) {
       setMediaError(err.message);
@@ -335,6 +343,9 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     audioCtxRef.current?.close();
     onClose();
   }, [onClose]);
+
+  // Keep ref in sync so the timer always calls the latest version
+  useEffect(() => { handleEndRef.current = handleEnd; }, [handleEnd]);
 
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-6">

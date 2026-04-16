@@ -2,7 +2,7 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Contains the AIs&Ears app — a subscription service that gives AI assistants real microphone and camera access.
+pnpm workspace monorepo using TypeScript. Contains **AIs&Ears** — a subscription/pay-per-session web app where the app IS the AI conversation interface. Users pay to give their device microphone and camera directly to Leo (powered by xAI Grok) via raw PCM16 audio streamed over a WebSocket proxy. No transcriptions, no middlemen.
 
 ## Stack
 
@@ -13,76 +13,127 @@ pnpm workspace monorepo using TypeScript. Contains the AIs&Ears app — a subscr
 - **API framework**: Express 5
 - **Database**: PostgreSQL + Drizzle ORM
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 - **Payments**: Stripe (via Replit integration, stripe-replit-sync)
 - **Frontend**: React + Vite, Tailwind CSS, Framer Motion
+- **AI**: xAI Grok Realtime WebSocket (`wss://api.x.ai/v1/realtime`) + Grok Vision REST (`grok-2-vision-1212`)
 
 ## App: AIs&Ears
 
-Subscription/pay-per-session app that gives AI assistants (Leo/Grok) live microphone and camera access. AIs&Ears IS the conversation interface — users talk to Leo inside the app with camera and mic always available. No transcriptions, no middlemen — raw PCM16 audio streamed directly to xAI's Realtime WebSocket API.
+### Core Concept
+AIs&Ears IS the conversation interface. After paying, users talk to Leo inside the app with mic and camera always available. Raw PCM16 audio (16-bit LE, 24kHz) is streamed directly to xAI's Realtime WebSocket API — no speech-to-text, no transcriptions, no middlemen.
 
-### Architecture: Conversation Interface
-- `ConversationFeed` — primary UI after purchase. Full chat interface with live mic + camera + Leo responses
-- `public/audio-processor.js` — AudioWorklet capturing PCM16 at 24kHz, chunked every 100ms
-- `/api/grok-live` — WebSocket proxy to `wss://api.x.ai/v1/realtime` (Leo's Realtime API), server-side API key, session-authenticated
-- `/api/grok-vision` — REST endpoint for mid-conversation camera snapshots via `grok-2-vision-1212`
-- Leo's voice: "Ara" (configurable); VAD: `server_vad`, auto-turn detection
-- Fallback model if required: `grok-4-1-fast-non-reasoning`
+### Pricing Tiers (Stripe products)
+| Tier | Price | Type | Features |
+|---|---|---|---|
+| `audio-monthly` | $5.99/mo | Subscription | Audio-only 24/7 |
+| `full-monthly` | $10.99/mo | Subscription | Audio + camera 24/7 |
+| `audio-session` | $2.99 | One-time | 30-min audio session |
+| `full-session` | $4.99 | One-time | 30-min audio + camera session |
 
-### Pricing Tiers (in Stripe)
-- `audio-monthly` — $5.99/month subscription (Audio-only 24/7)
-- `full-monthly` — $10.99/month subscription (Audio + video 24/7)
-- `audio-session` — $2.99 one-time (30-min audio session)
-- `full-session` — $4.99 one-time (30-min audio + video session)
+Hardcoded Stripe sandbox price IDs (from Replit Stripe integration):
+- `audio-monthly`: `price_1TGDzTPnPNh4x29isbIS2PnE`
+- `full-monthly`: `price_1TGDzUPnPNh4x29iqfTcK073`
+- `audio-session`: `price_1TGDzUPnPNh4x29i3mTtQ1RE`
+- `full-session`: `price_1TGDzVPnPNh4x29iJe6Cc0yo`
 
-### AI Connection
-- After payment, POST /api/ai-token generates an ephemeral OpenAI Realtime API token
-- Requires `OPENAI_API_KEY` env var to be set for live AI connection
-- Without it, returns `mode: "demo"` and the UI shows instructions to set up the key
+**No free/demo tiers.** All access is paid only.
 
-### Environment Variables Needed
-- `OPENAI_API_KEY` — for live AI (OpenAI Realtime API gpt-4o-realtime-preview)
-- `DATABASE_URL` — auto-provisioned by Replit
-- Stripe keys — managed via Replit Stripe integration
+### Architecture
 
-## Structure
-
-```text
-artifacts-monorepo/
-├── artifacts/
-│   ├── api-server/         # Express API server (Stripe, checkout, AI token)
-│   └── ais-and-ears/       # React + Vite frontend (dark neon-green UI)
-├── lib/
-│   ├── api-spec/           # OpenAPI spec + Orval codegen config
-│   ├── api-client-react/   # Generated React Query hooks
-│   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
-│       └── src/schema/sessions.ts  # paid_sessions table
-├── scripts/
-│   └── src/
-│       ├── stripeClient.ts     # Stripe client for scripts
-│       └── seed-products.ts    # Creates all 4 Stripe products
 ```
+User Browser
+  ├── AudioWorklet (pcm16-processor) → PCM16 chunks @ 24kHz
+  ├── WebSocket → /api/grok-live → xAI Realtime WebSocket (Leo's voice)
+  └── Camera frame → POST /api/grok-vision → grok-2-vision-1212 REST
+```
+
+#### Key Files
+- `artifacts/ais-and-ears/src/components/feed/ConversationFeed.tsx` — primary session UI (mic, camera, Leo responses)
+- `artifacts/ais-and-ears/public/audio-processor.js` — AudioWorklet: raw PCM16 chunks every 100ms
+- `artifacts/api-server/src/websocket/grokRealtime.ts` — WebSocket proxy to `wss://api.x.ai/v1/realtime`
+- `artifacts/api-server/src/routes/grokVision.ts` — REST vision snapshots via `grok-2-vision-1212`
+- `artifacts/api-server/src/routes/checkout.ts` — Stripe checkout + verify, payment link fallback
+- `artifacts/api-server/src/routes/products.ts` — product listing with hardcoded fallback
+- `artifacts/api-server/src/storage.ts` — Drizzle session CRUD
+- `lib/db/src/schema/sessions.ts` — `paid_sessions` table schema
+
+#### Leo Config (grokRealtime.ts)
+- Model: `grok-4-1-fast-non-reasoning`
+- Voice: `Ara`
+- Turn detection: `server_vad` (threshold 0.5, silence 600ms)
+- Input/output: `pcm16`
+- Modalities: `["text", "audio"]`
+
+### Frontend Tabs
+1. **Home** — Hero banner with AI character image, "Choose Your Uplink" CTA → Packages tab
+2. **Packages** — Four paid tiers, Stripe checkout on click, success redirects back with session
+3. **Settings** — Mic toggle, camera toggle, verbal responses toggle, auto-vision toggle, dark/light mode (all persisted via `SettingsContext` → localStorage)
+
+### Payment Flow
+1. User picks a tier → `POST /api/checkout` with `{ priceId, tier }`
+2. **Path A** (valid Stripe key): Creates Stripe Checkout session → redirects to `stripe.com/pay/...` → returns with `?success=true&session_id=cs_...`
+3. **Path B** (payment links configured): Uses `STRIPE_LINK_*` env vars → redirects to Stripe Payment Link with success/cancel URLs embedded
+4. On return: `GET /api/checkout/verify?session_id=...&tier=...` → creates DB session → returns `{ sessionId, tier, expiresAt }`
+5. `ConversationFeed` opens with the verified sessionId
 
 ## Key Routes
 
-- `GET /api/products` — list all products with prices (falls back to Stripe API if DB not synced)
-- `POST /api/checkout` — create Stripe checkout session
-- `GET /api/checkout/verify?session_id=...` — verify payment and create/get session
-- `POST /api/ai-token` — get ephemeral OpenAI Realtime token (requires valid sessionId)
-- `POST /api/stripe/webhook` — Stripe webhook handler
+| Route | Method | Purpose |
+|---|---|---|
+| `/api/products` | GET | List products (DB → Stripe API → hardcoded fallback) |
+| `/api/checkout` | POST | Create Stripe checkout session or payment link |
+| `/api/checkout/verify` | GET | Verify payment, create/return DB session |
+| `/api/grok-live` | WS | WebSocket proxy → xAI Realtime |
+| `/api/grok-vision` | POST | Camera snapshot → Grok Vision REST |
+| `/api/stripe/webhook` | POST | Stripe webhook (signature verified) |
 
-## TypeScript & Composite Projects
+## Environment Variables
 
-Every package extends `tsconfig.base.json` which sets `composite: true`. The root `tsconfig.json` lists all packages as project references. This means:
+| Variable | Purpose | Required |
+|---|---|---|
+| `XAI_API_KEY` | xAI Grok API key (Realtime + Vision) | **Yes** |
+| `STRIPE_SECRET_KEY` | Must be `sk_test_...` or `sk_live_...` | For Stripe checkout |
+| `STRIPE_PUBLISHABLE_KEY` | Frontend Stripe key | For Stripe checkout |
+| `DATABASE_URL` | Auto-provisioned by Replit PostgreSQL | Yes |
+| `SESSION_SECRET` | Express session secret | Yes |
+| `STRIPE_LINK_AUDIO_MONTHLY` | Payment link URL fallback | Optional |
+| `STRIPE_LINK_FULL_MONTHLY` | Payment link URL fallback | Optional |
+| `STRIPE_LINK_AUDIO_SESSION` | Payment link URL fallback | Optional |
+| `STRIPE_LINK_FULL_SESSION` | Payment link URL fallback | Optional |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signature secret | Optional |
 
-- **Always typecheck from the root** — run `pnpm run typecheck`
-- **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck
-- **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array
+> ⚠️ `STRIPE_SECRET_KEY` must be a standard `sk_test_51...` key from dashboard.stripe.com/test/apikeys → Standard keys. The `mk_` prefix (Restricted key format) is invalid and will cause 401 errors.
 
-## Root Scripts
+## Design
 
-- `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages that define it
-- `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
-- `pnpm --filter @workspace/scripts exec tsx src/seed-products.ts` — (re-)seed Stripe products
+- **Colors**: Deep navy-teal background, verdigris accent (`#82C4B0`), dark glass panels
+- **Fonts**: Cormorant Garamond (display/headings), Raleway (body)
+- **Banner**: `public/images/ai-banner.jpg` — AI character close-up with steampunk gears
+- **Theme**: Dark by default, light mode toggle in Settings
+
+## Monorepo Structure
+
+```text
+├── artifacts/
+│   ├── api-server/         # Express API server (Stripe, xAI proxy, checkout)
+│   └── ais-and-ears/       # React + Vite frontend
+├── lib/
+│   ├── db/                 # Drizzle ORM schema + PostgreSQL connection
+│   └── (api-spec, api-client-react, api-zod — legacy, not actively used)
+├── scripts/
+│   └── src/seed-products.ts  # Creates all 4 Stripe products
+```
+
+## TypeScript
+
+Every package extends `tsconfig.base.json` (`composite: true`). Root `tsconfig.json` lists all packages as project references.
+
+- **Always typecheck from root**: `pnpm run typecheck`
+- Run seeds: `pnpm --filter @workspace/scripts exec tsx src/seed-products.ts`
+
+## Known Bugs Fixed (history)
+- `checkout.ts`: `fullLink` was computed but `link` was returned — payment link success/cancel URLs were ignored. Fixed to return `fullLink`.
+- `checkout.ts verify`: Logic order bug — `session_id` undefined fell into wrong branch. Restructured to check `cs_` prefix first.
+- `ConversationFeed`: `handleEnd` stale closure in session timer — fixed with a ref (`handleEndRef`) that stays in sync.
+- `ConversationFeed`: `getUserMedia({ audio: false, video: false })` crash when both mic and camera disabled — guarded with `if (useMic || useCam)` before calling getUserMedia.
