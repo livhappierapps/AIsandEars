@@ -85,7 +85,7 @@ export default function Home() {
               <div className="absolute inset-0 border-t-2 border-primary rounded-full animate-spin"></div>
               <div className="absolute inset-2 border-b-2 border-primary/50 rounded-full animate-spin [animation-direction:reverse]"></div>
               <img
-                src={`${import.meta.env.BASE_URL}images/ai-banner.png`}
+                src={`${import.meta.env.BASE_URL}images/ai-banner.jpg`}
                 alt="AI Core"
                 className="absolute inset-2 rounded-full object-cover animate-pulse"
               />
@@ -136,7 +136,7 @@ export default function Home() {
             {/* Full-width Hero Banner */}
             <div className="relative w-full" style={{ marginTop: "4rem" }}>
               <img
-                src={`${import.meta.env.BASE_URL}images/ai-banner.png`}
+                src={`${import.meta.env.BASE_URL}images/ai-banner.jpg`}
                 alt="AIs & Ears — Give Your AI Real Eyes & Ears"
                 className="w-full object-cover"
                 style={{ maxHeight: "52vh", objectPosition: "center top" }}
