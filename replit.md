@@ -7,8 +7,8 @@ pnpm workspace monorepo using TypeScript. Contains **AIs&Ears** — a subscripti
 ## Quick Mental Model
 
 - **Frontend**: one web app with Home, Packages, Settings, and live Conversation views
-- **Backend**: one API server that handles products, checkout, verification, vision, and realtime proxying
-- **Session state**: stored in PostgreSQL
+- **Backend**: one API server for products, checkout, verification, vision, and realtime proxying
+- **Session state**: PostgreSQL
 - **Voice stream**: raw PCM16 over WebSocket
 - **Vision**: camera snapshots over REST
 - **Payments**: Stripe checkout or payment-link fallback
@@ -160,14 +160,6 @@ User Browser
 - `artifacts/api-server/src/routes/grokVision.ts` — camera snapshot endpoint
 - `artifacts/api-server/src/websocket/grokRealtime.ts` — xAI Realtime proxy
 - `artifacts/api-server/src/storage.ts` — session and product DB helpers
-
-## Naming Conventions
-
-- Use `HomeTab`, `PackagesTab`, `SettingsTab` for tab UI
-- Use `ConversationFeed` for the live session interface
-- Use `grokRealtime` and `grokVision` for xAI transport code
-- Use `settings` for user preferences stored in localStorage
-- Use `tier` for paid plan identity
 
 ## TypeScript
 

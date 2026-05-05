@@ -19,30 +19,6 @@ function getBaseUrl() {
   return domain ? `https://${domain}` : "http://localhost:8080";
 }
 
-// Demo access — creates a 30-minute session without payment (for testing)
-router.post("/demo-access", async (req, res) => {
-  try {
-    const tier = (req.body.tier as string) ?? "audio-session";
-    const existing = await storage.createSession({
-      id: crypto.randomUUID(),
-      stripeSessionId: `demo_${crypto.randomUUID()}`,
-      tier,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000),
-      used: false,
-    });
-    res.json({
-      valid: true,
-      tier: existing.tier,
-      sessionId: existing.id,
-      expiresAt: existing.expiresAt?.toISOString() ?? null,
-      demo: true,
-    });
-  } catch (err: any) {
-    req.log?.error({ err }, "Demo access error");
-    res.status(500).json({ error: err.message ?? "Demo access failed" });
-  }
-});
-
 router.post("/checkout", async (req, res) => {
   const { priceId, tier } = req.body;
 
