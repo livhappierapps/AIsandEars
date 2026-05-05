@@ -132,6 +132,29 @@ Every package extends `tsconfig.base.json` (`composite: true`). Root `tsconfig.j
 - **Always typecheck from root**: `pnpm run typecheck`
 - Run seeds: `pnpm --filter @workspace/scripts exec tsx src/seed-products.ts`
 
+## Easy Ways to Save or Share
+
+### Samsung A17
+1. Open the app in Chrome.
+2. Tap the **three dots** menu.
+3. Tap **Add to Home screen**.
+4. Rename it if you want, then tap **Add**.
+
+To save a page or screenshot:
+- Use the browser menu → **Download** or **Share**
+- Or take a screenshot with the phone buttons and save it to Gallery
+
+### iPhone 13
+1. Open the app in Safari.
+2. Tap the **Share** button.
+3. Tap **Add to Home Screen**.
+4. Tap **Add**.
+
+To save content:
+- Tap **Share** → **Save to Files** for pages/files
+- Or take a screenshot with the Side button + Volume Up
+- Screenshots save automatically to Photos
+
 ## Known Bugs Fixed (history)
 - `checkout.ts`: `fullLink` was computed but `link` was returned — payment link success/cancel URLs were ignored. Fixed to return `fullLink`.
 - `checkout.ts verify`: Logic order bug — `session_id` undefined fell into wrong branch. Restructured to check `cs_` prefix first.
