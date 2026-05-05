@@ -3,6 +3,9 @@ import { storage } from "../storage";
 
 const router: IRouter = Router();
 
+// Matches data URLs produced by canvas.toDataURL() — e.g. "data:image/jpeg;base64,..."
+const DATA_URL_RE = /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+
 router.post("/grok-vision", async (req, res) => {
   const { sessionId, imageData, prompt, isFirstFrame } = req.body;
 
@@ -11,6 +14,9 @@ router.post("/grok-vision", async (req, res) => {
   }
   if (!imageData) {
     return res.status(400).json({ error: "imageData is required" });
+  }
+  if (typeof imageData !== "string" || !DATA_URL_RE.test(imageData)) {
+    return res.status(400).json({ error: "imageData must be a valid base64 data URL (jpeg/png/webp/gif)" });
   }
 
   try {

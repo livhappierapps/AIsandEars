@@ -4,10 +4,8 @@ import type { Server } from "http";
 import { storage } from "../storage";
 import { logger } from "../lib/logger";
 
-// Per Leo: connect raw with no model param; xAI auto-picks voice-tuned backend.
-// Fallback model if API requires it: "grok-4-1-fast-non-reasoning"
 const XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime";
-const FALLBACK_MODEL = "grok-4-1-fast-non-reasoning";
+const MODEL = "grok-4-1-fast-non-reasoning";
 
 export function attachGrokRealtimeProxy(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -42,8 +40,7 @@ export function attachGrokRealtimeProxy(server: Server) {
       const xaiKey = process.env.XAI_API_KEY;
       if (!xaiKey) { clientWs.close(4503, "xAI API key not configured"); return; }
 
-      // Leo confirmed: include model param to avoid 429; xAI needs it even if auto-selected
-      const connectUrl = `${XAI_REALTIME_URL}?model=${FALLBACK_MODEL}`;
+      const connectUrl = `${XAI_REALTIME_URL}?model=${MODEL}`;
       logger.info({ sessionId, connectUrl }, "Opening xAI Realtime WebSocket");
 
       const xaiWs = new WebSocket(connectUrl, {
@@ -75,13 +72,13 @@ export function attachGrokRealtimeProxy(server: Server) {
       });
 
       xaiWs.on("error", (err) => {
-        logger.warn({ err, sessionId }, "xAI Realtime error — trying fallback model");
-        // Notify client but don't close yet — the error handler will handle cleanup
+        logger.error({ err, sessionId }, "xAI Realtime error — closing client connection");
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(JSON.stringify({
             type: "error",
-            message: `xAI connection error: ${err.message}. Try fallback model: ${FALLBACK_MODEL}`,
+            message: `xAI connection error: ${err.message}`,
           }));
+          clientWs.close(1011, "xAI connection error");
         }
       });
 

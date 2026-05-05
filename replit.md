@@ -39,6 +39,7 @@ AIs&Ears IS the conversation interface. After paying, users talk to Leo inside t
 - The backend is split cleanly: checkout/products/vision/realtime routes live in `artifacts/api-server`.
 - The frontend is the only place users interact with Leo.
 - Keep new features aligned with the existing paid-only flow.
+- **No demo/free/test access routes exist.** All session creation is via verified Stripe payment.
 - Prefer updating these notes instead of scattering instructions in code comments.
 
 ### Pricing Tiers (Stripe products)
@@ -95,6 +96,11 @@ User Browser
 4. On return: `GET /api/checkout/verify?session_id=...&tier=...` → creates DB session → returns `{ sessionId, tier, expiresAt }`
 5. `ConversationFeed` opens with the verified sessionId
 
+### Auto-Vision Behavior
+- The **Auto-Vision** toggle in Settings enables automatic camera frames sent to Leo every 12 seconds.
+- When a user connects and `settings.autoVision` is `true` and the tier is `full-*`, auto-vision starts immediately on connection.
+- The user can also manually toggle it mid-session with the "Start/Stop Auto-Vision" button.
+
 ## Key Routes
 
 | Route | Method | Purpose |
@@ -105,6 +111,7 @@ User Browser
 | `/api/grok-live` | WS | WebSocket proxy → xAI Realtime |
 | `/api/grok-vision` | POST | Camera snapshot → Grok Vision REST |
 | `/api/stripe/webhook` | POST | Stripe webhook (signature verified) |
+| `/api/ai-token` | POST | **410 Deprecated** — old OpenAI endpoint, stub only |
 
 ## Environment Variables
 
@@ -119,7 +126,7 @@ User Browser
 | `STRIPE_LINK_FULL_MONTHLY` | Payment link URL fallback | Optional |
 | `STRIPE_LINK_AUDIO_SESSION` | Payment link URL fallback | Optional |
 | `STRIPE_LINK_FULL_SESSION` | Payment link URL fallback | Optional |
-| `STRIPE_WEBHOOK_SECRET` | Webhook signature secret | Optional |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signature secret | Optional but recommended in production |
 
 > ⚠️ `STRIPE_SECRET_KEY` must be a standard `sk_test_51...` key from dashboard.stripe.com/test/apikeys → Standard keys. The `mk_` prefix (Restricted key format) is invalid and will cause 401 errors.
 
@@ -136,13 +143,16 @@ User Browser
 ├── artifacts/
 │   ├── api-server/         # Express API server (Stripe, xAI proxy, checkout)
 │   └── ais-and-ears/       # React + Vite frontend
-├── public/
-│   └── images/ai-banner.jpg
 ├── lib/
 │   ├── db/                 # Drizzle ORM schema + PostgreSQL connection
-│   └── (api-spec, api-client-react, api-zod — legacy, not actively used)
+│   └── api-spec/           # OpenAPI spec — source of truth for route contracts
+│   └── api-client-react/   # Generated React Query hooks from OpenAPI spec
+│   └── api-zod/            # Generated Zod schemas from OpenAPI spec
 ├── scripts/
-│   └── src/seed-products.ts  # Creates all 4 Stripe products
+│   └── src/
+│       ├── integration-check.ts  # API integration test suite
+│       ├── seed-products.ts      # Creates all 4 Stripe products
+│       └── stripeClient.ts       # Stripe client for scripts
 ```
 
 ## File Map
@@ -157,16 +167,30 @@ User Browser
 - `artifacts/api-server/src/routes/index.ts` — API router registration
 - `artifacts/api-server/src/routes/products.ts` — pricing/product data source
 - `artifacts/api-server/src/routes/checkout.ts` — checkout and verification flow
+- `artifacts/api-server/src/routes/aiToken.ts` — **deprecated 410 stub** (do not expand)
 - `artifacts/api-server/src/routes/grokVision.ts` — camera snapshot endpoint
 - `artifacts/api-server/src/websocket/grokRealtime.ts` — xAI Realtime proxy
 - `artifacts/api-server/src/storage.ts` — session and product DB helpers
 
+## Integration Tests
+
+Run the full API check suite with:
+```bash
+pnpm --filter @workspace/scripts run check
+```
+
+Covers: healthz, products shape, checkout validation, verify validation, grokVision input validation (including imageData format), deprecated endpoint response, and fake-session rejection. All tests run against the live server at `localhost:80/api` by default. Override with `API_URL=...`.
+
 ## TypeScript
 
-Every package extends `tsconfig.base.json` (`composite: true`). Root `tsconfig.json` lists all packages as project references.
+Every package extends `tsconfig.base.json`. Root `tsconfig.json` lists all lib packages as project references.
 
 - **Always typecheck from root**: `pnpm run typecheck`
-- Run seeds: `pnpm --filter @workspace/scripts exec tsx src/seed-products.ts`
+- Run seeds: `pnpm --filter @workspace/scripts run seed`
+
+> **Known pre-existing TS errors (not introduced by this codebase work):**
+> - `api-server/src/app.ts`, `checkout.ts`, `grokVision.ts`: `TS7030` — Express 5 async handlers use `return res.json()` which TypeScript flags as a missing return path. Runtime behavior is correct.
+> - `api-server/src/index.ts`: `TS2353` (stripe-replit-sync schema option) and `TS2307` (pg @types not installed). Server runs correctly despite these.
 
 ## Easy Ways to Save or Share
 
@@ -197,13 +221,12 @@ To save a page or screenshot:
 - Keep future agent notes here in `replit.md`
 - When in doubt, edit this file first so future agents stay oriented
 
-To save content:
-- Tap **Share** → **Save to Files** for pages/files
-- Or take a screenshot with the Side button + Volume Up
-- Screenshots save automatically to Photos
-
 ## Known Bugs Fixed (history)
 - `checkout.ts`: `fullLink` was computed but `link` was returned — payment link success/cancel URLs were ignored. Fixed to return `fullLink`.
 - `checkout.ts verify`: Logic order bug — `session_id` undefined fell into wrong branch. Restructured to check `cs_` prefix first.
 - `ConversationFeed`: `handleEnd` stale closure in session timer — fixed with a ref (`handleEndRef`) that stays in sync.
 - `ConversationFeed`: `getUserMedia({ audio: false, video: false })` crash when both mic and camera disabled — guarded with `if (useMic || useCam)` before calling getUserMedia.
+- `grokRealtime.ts`: xAI WebSocket error left client connection open — now properly closes client with code 1011 on xAI error.
+- `grokVision.ts`: No validation of `imageData` format — now rejects non-data-URL strings with 400 before hitting the DB or xAI.
+- `ConversationFeed`: `settings.autoVision` toggle existed but had no effect — now auto-starts vision on connection when the setting is enabled.
+- `ActiveFeed.tsx`: Duplicate/unused session component was removed. `ConversationFeed.tsx` is the single canonical live session UI.

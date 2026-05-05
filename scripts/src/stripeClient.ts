@@ -28,10 +28,10 @@ async function getCredentials() {
     },
   });
 
-  const data = await response.json();
+  const data = await response.json() as { items?: { settings: { publishable?: string; secret?: string } }[] };
   const connectionSettings = data.items?.[0];
 
-  if (!connectionSettings || (!connectionSettings.settings.publishable || !connectionSettings.settings.secret)) {
+  if (!connectionSettings || !connectionSettings.settings.publishable || !connectionSettings.settings.secret) {
     throw new Error(`Stripe ${targetEnvironment} connection not found`);
   }
 

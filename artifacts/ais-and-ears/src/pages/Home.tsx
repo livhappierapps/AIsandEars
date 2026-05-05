@@ -16,7 +16,6 @@ interface DirectSession {
   tier: string;
   sessionId: string;
   expiresAt: string | null;
-  demo?: boolean;
 }
 
 export default function Home() {

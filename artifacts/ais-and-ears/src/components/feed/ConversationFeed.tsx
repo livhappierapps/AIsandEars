@@ -46,6 +46,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   const visionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
+  const autoVisionStartedRef = useRef(false);
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -131,7 +132,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     playbackQueueRef.current.push(buffer);
 
     if (!isPlayingRef.current) drainPlaybackQueue();
-  }, [settings.verbalResponses]);
+  }, [settings.verbalResponses]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const drainPlaybackQueue = useCallback(() => {
     const ctx = audioCtxRef.current;
@@ -148,7 +149,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     src.connect(ctx.destination);
     src.onended = drainPlaybackQueue;
     src.start();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle messages from xAI
   const handleXaiMessage = useCallback((raw: string) => {
@@ -206,7 +207,6 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     addMessage("system", useMic ? "Requesting microphone access..." : "Connecting to Leo...");
 
     try {
-      // Setup audio context + worklet for PCM capture (only if mic is enabled)
       const ctx = new AudioContext({ sampleRate: 24000 });
       audioCtxRef.current = ctx;
 
@@ -220,7 +220,6 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         });
         mediaStreamRef.current = stream;
 
-        // Setup video preview
         if (videoRef.current && useCam) {
           const videoStream = new MediaStream(stream.getVideoTracks());
           videoRef.current.srcObject = videoStream;
@@ -269,7 +268,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         setMicActive(false);
       };
 
-      // Stream mic audio — only if worklet was set up
+      // Stream mic audio via AudioWorklet
       if (workletNodeRef.current) {
         workletNodeRef.current.port.onmessage = (e: MessageEvent) => {
           if (ws.readyState !== WebSocket.OPEN) return;
@@ -321,7 +320,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     }
   }, [sessionId, addMessage]);
 
-  // Auto vision
+  // Toggle auto-vision interval
   const toggleVision = useCallback(() => {
     if (visionActive) {
       clearInterval(visionIntervalRef.current!);
@@ -335,6 +334,19 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       visionIntervalRef.current = setInterval(shareCamera, VISION_INTERVAL_MS);
     }
   }, [visionActive, shareCamera, addMessage]);
+
+  // Auto-start vision once connected if the user has auto-vision enabled in Settings
+  useEffect(() => {
+    if (
+      status === "connected" &&
+      isFull &&
+      settings.autoVision &&
+      !autoVisionStartedRef.current
+    ) {
+      autoVisionStartedRef.current = true;
+      toggleVision();
+    }
+  }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEnd = useCallback(() => {
     visionIntervalRef.current && clearInterval(visionIntervalRef.current);
@@ -424,7 +436,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
             <canvas ref={audioCanvasRef} className="w-full h-full" width={400} height={60} />
           </div>
 
-          {/* Vision controls */}
+          {/* Vision controls — only on full tier when connected */}
           {isFull && status === "connected" && (
             <div className="flex flex-col gap-2">
               <Button
@@ -512,8 +524,13 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
             ) : (
               <div className="flex items-center gap-3">
                 <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                  <Mic className="w-4 h-4 text-primary animate-pulse" />
-                  <span className="text-xs text-primary font-body">Listening to you...</span>
+                  {micActive
+                    ? <Mic className="w-4 h-4 text-primary animate-pulse" />
+                    : <MicOff className="w-4 h-4 text-muted-foreground" />
+                  }
+                  <span className="text-xs text-primary font-body">
+                    {micActive ? "Listening to you..." : "Audio-only mode"}
+                  </span>
                 </div>
               </div>
             )}

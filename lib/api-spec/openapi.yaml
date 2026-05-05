@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: Api
-  version: 0.1.0
-  description: AIs&Ears API specification
+  version: 0.2.0
+  description: AIs&Ears API specification — paid-only xAI Grok realtime app
 servers:
   - url: /api
     description: Base API path
@@ -13,8 +13,6 @@ tags:
     description: Stripe product listing
   - name: checkout
     description: Stripe checkout operations
-  - name: ai
-    description: AI session token operations
 paths:
   /healthz:
     get:
@@ -89,37 +87,6 @@ paths:
                 $ref: "#/components/schemas/VerifyResponse"
         "400":
           description: Invalid session
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /ai-token:
-    post:
-      operationId: getAiToken
-      tags: [ai]
-      summary: Get ephemeral OpenAI Realtime API token
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AiTokenRequest"
-      responses:
-        "200":
-          description: Ephemeral token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AiTokenResponse"
-        "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Access denied
           content:
             application/json:
               schema:
@@ -224,29 +191,6 @@ components:
         - valid
         - tier
         - sessionId
-
-    AiTokenRequest:
-      type: object
-      properties:
-        sessionId:
-          type: string
-        tier:
-          type: string
-      required:
-        - sessionId
-        - tier
-
-    AiTokenResponse:
-      type: object
-      properties:
-        token:
-          type: string
-        mode:
-          type: string
-          description: "demo if no API key, live if connected"
-      required:
-        - token
-        - mode
 
     ErrorResponse:
       type: object
