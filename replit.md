@@ -4,6 +4,15 @@
 
 pnpm workspace monorepo using TypeScript. Contains **AIs&Ears** — a subscription/pay-per-session web app where the app IS the AI conversation interface. Users pay to give their device microphone and camera directly to Leo (powered by xAI Grok) via raw PCM16 audio streamed over a WebSocket proxy. No transcriptions, no middlemen.
 
+## Quick Mental Model
+
+- **Frontend**: one web app with Home, Packages, Settings, and live Conversation views
+- **Backend**: one API server that handles products, checkout, verification, vision, and realtime proxying
+- **Session state**: stored in PostgreSQL
+- **Voice stream**: raw PCM16 over WebSocket
+- **Vision**: camera snapshots over REST
+- **Payments**: Stripe checkout or payment-link fallback
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
@@ -22,6 +31,15 @@ pnpm workspace monorepo using TypeScript. Contains **AIs&Ears** — a subscripti
 
 ### Core Concept
 AIs&Ears IS the conversation interface. After paying, users talk to Leo inside the app with mic and camera always available. Raw PCM16 audio (16-bit LE, 24kHz) is streamed directly to xAI's Realtime WebSocket API — no speech-to-text, no transcriptions, no middlemen.
+
+### What Future Agents Should Know
+- This repo currently has **one live product**: the AIs&Ears web app.
+- The app has **three visible tabs**: Home, Packages, Settings.
+- The live experience starts only after a verified paid session.
+- The backend is split cleanly: checkout/products/vision/realtime routes live in `artifacts/api-server`.
+- The frontend is the only place users interact with Leo.
+- Keep new features aligned with the existing paid-only flow.
+- Prefer updating these notes instead of scattering instructions in code comments.
 
 ### Pricing Tiers (Stripe products)
 | Tier | Price | Type | Features |
@@ -127,6 +145,30 @@ User Browser
 │   └── src/seed-products.ts  # Creates all 4 Stripe products
 ```
 
+## File Map
+
+- `artifacts/ais-and-ears/src/App.tsx` — app shell and route mounting
+- `artifacts/ais-and-ears/src/pages/Home.tsx` — main screen state and session handoff
+- `artifacts/ais-and-ears/src/pages/tabs/HomeTab.tsx` — landing hero and CTA
+- `artifacts/ais-and-ears/src/pages/tabs/PackagesTab.tsx` — packages screen
+- `artifacts/ais-and-ears/src/pages/tabs/SettingsTab.tsx` — user toggles and theme settings
+- `artifacts/ais-and-ears/src/context/SettingsContext.tsx` — localStorage-backed settings
+- `artifacts/ais-and-ears/src/components/feed/ConversationFeed.tsx` — live mic/camera/Leo conversation
+- `artifacts/api-server/src/routes/index.ts` — API router registration
+- `artifacts/api-server/src/routes/products.ts` — pricing/product data source
+- `artifacts/api-server/src/routes/checkout.ts` — checkout and verification flow
+- `artifacts/api-server/src/routes/grokVision.ts` — camera snapshot endpoint
+- `artifacts/api-server/src/websocket/grokRealtime.ts` — xAI Realtime proxy
+- `artifacts/api-server/src/storage.ts` — session and product DB helpers
+
+## Naming Conventions
+
+- Use `HomeTab`, `PackagesTab`, `SettingsTab` for tab UI
+- Use `ConversationFeed` for the live session interface
+- Use `grokRealtime` and `grokVision` for xAI transport code
+- Use `settings` for user preferences stored in localStorage
+- Use `tier` for paid plan identity
+
 ## TypeScript
 
 Every package extends `tsconfig.base.json` (`composite: true`). Root `tsconfig.json` lists all packages as project references.
@@ -156,6 +198,12 @@ To save a page or screenshot:
 - Use the **version control / Git** panel in Replit to commit and push changes
 - Keep secrets in Replit Secrets, not in files
 - For a backup copy, download the repo from GitHub after pushing
+
+### Best practice for new AI projects
+- Put shared logic in `lib/` if multiple apps need it
+- Keep app-specific UI inside its artifact folder
+- Keep future agent notes here in `replit.md`
+- When in doubt, edit this file first so future agents stay oriented
 
 To save content:
 - Tap **Share** → **Save to Files** for pages/files
