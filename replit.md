@@ -118,6 +118,8 @@ User Browser
 ├── artifacts/
 │   ├── api-server/         # Express API server (Stripe, xAI proxy, checkout)
 │   └── ais-and-ears/       # React + Vite frontend
+├── public/
+│   └── images/ai-banner.jpg
 ├── lib/
 │   ├── db/                 # Drizzle ORM schema + PostgreSQL connection
 │   └── (api-spec, api-client-react, api-zod — legacy, not actively used)
@@ -149,6 +151,11 @@ To save a page or screenshot:
 2. Tap the **Share** button.
 3. Tap **Add to Home Screen**.
 4. Tap **Add**.
+
+### Save the project itself
+- Use the **version control / Git** panel in Replit to commit and push changes
+- Keep secrets in Replit Secrets, not in files
+- For a backup copy, download the repo from GitHub after pushing
 
 To save content:
 - Tap **Share** → **Save to Files** for pages/files
