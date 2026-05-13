@@ -5,7 +5,10 @@ import crypto from "crypto";
 
 const router: IRouter = Router();
 
-// Payment links stored as env vars — set these from Stripe dashboard on mobile
+// Accepted tier identifiers — must match Stripe product metadata
+const VALID_TIERS = new Set(["audio-monthly", "full-monthly", "audio-session", "full-session"]);
+
+// Payment links stored as env vars — set these from Stripe dashboard
 // STRIPE_LINK_AUDIO_MONTHLY, STRIPE_LINK_FULL_MONTHLY, etc.
 const PAYMENT_LINKS: Record<string, string | undefined> = {
   "audio-monthly": process.env.STRIPE_LINK_AUDIO_MONTHLY,
@@ -16,7 +19,8 @@ const PAYMENT_LINKS: Record<string, string | undefined> = {
 
 function getBaseUrl() {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
-  return domain ? `https://${domain}` : "http://localhost:8080";
+  // Port 80 is the shared Replit proxy — not the raw service port
+  return domain ? `https://${domain}` : "http://localhost:80";
 }
 
 router.post("/checkout", async (req, res) => {
@@ -24,6 +28,9 @@ router.post("/checkout", async (req, res) => {
 
   if (!priceId || !tier) {
     return res.status(400).json({ error: "priceId and tier are required" });
+  }
+  if (!VALID_TIERS.has(tier)) {
+    return res.status(400).json({ error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}` });
   }
 
   const baseUrl = getBaseUrl();
@@ -76,6 +83,9 @@ router.get("/checkout/verify", async (req, res) => {
       }
 
       const resolvedTier = (stripeSession.metadata?.tier ?? "audio-session") as string;
+      if (!VALID_TIERS.has(resolvedTier)) {
+        return res.status(400).json({ error: "Unrecognized tier in Stripe session metadata" });
+      }
       const isTimedSession = resolvedTier.includes("session");
 
       let existing = await storage.getSessionByStripeId(session_id);
@@ -105,6 +115,9 @@ router.get("/checkout/verify", async (req, res) => {
   if (session_id?.startsWith("link_") || tier) {
     if (!tier) {
       return res.status(400).json({ error: "tier is required for payment link verification" });
+    }
+    if (!VALID_TIERS.has(tier)) {
+      return res.status(400).json({ error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}` });
     }
     const isTimedSession = tier.includes("session");
     const existing = await storage.createSession({

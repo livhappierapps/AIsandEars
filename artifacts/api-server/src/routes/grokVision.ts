@@ -6,6 +6,13 @@ const router: IRouter = Router();
 // Matches data URLs produced by canvas.toDataURL() — e.g. "data:image/jpeg;base64,..."
 const DATA_URL_RE = /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
 
+// ~2MB decoded image limit (2MB × 4/3 ≈ 2.73MB as base64 characters)
+const MAX_IMAGE_B64_CHARS = 2_800_000;
+
+// Vision model — pinned release for consistency
+// Note: xAI chat/completions endpoint is deprecated upstream; migrate to Responses API when stable
+const VISION_MODEL = "grok-2-vision-1212";
+
 router.post("/grok-vision", async (req, res) => {
   const { sessionId, imageData, prompt, isFirstFrame } = req.body;
 
@@ -17,6 +24,9 @@ router.post("/grok-vision", async (req, res) => {
   }
   if (typeof imageData !== "string" || !DATA_URL_RE.test(imageData)) {
     return res.status(400).json({ error: "imageData must be a valid base64 data URL (jpeg/png/webp/gif)" });
+  }
+  if (imageData.length > MAX_IMAGE_B64_CHARS) {
+    return res.status(413).json({ error: "imageData too large — max 2MB image" });
   }
 
   try {
@@ -46,7 +56,7 @@ router.post("/grok-vision", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "grok-2-vision-1212",
+        model: VISION_MODEL,
         messages: [
           {
             role: "system",
@@ -86,7 +96,7 @@ router.post("/grok-vision", async (req, res) => {
     };
 
     const message = data.choices?.[0]?.message?.content ?? "...";
-    res.json({ message, model: data.model ?? "grok-2-vision-1212" });
+    res.json({ message, model: data.model ?? VISION_MODEL });
   } catch (err: any) {
     req.log?.error({ err }, "Grok vision error");
     res.status(500).json({ error: err.message ?? "Vision processing failed" });

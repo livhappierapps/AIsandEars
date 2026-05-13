@@ -5,7 +5,9 @@ import { storage } from "../storage";
 import { logger } from "../lib/logger";
 
 const XAI_REALTIME_URL = "wss://api.x.ai/v1/realtime";
-const MODEL = "grok-4-1-fast-non-reasoning";
+// grok-voice-think-fast-1.0 is xAI's recommended voice model for the Realtime API
+// Passed as a query param per docs: wss://api.x.ai/v1/realtime?model=...
+const VOICE_MODEL = "grok-voice-think-fast-1.0";
 
 export function attachGrokRealtimeProxy(server: Server) {
   const wss = new WebSocketServer({ noServer: true });
@@ -40,7 +42,7 @@ export function attachGrokRealtimeProxy(server: Server) {
       const xaiKey = process.env.XAI_API_KEY;
       if (!xaiKey) { clientWs.close(4503, "xAI API key not configured"); return; }
 
-      const connectUrl = `${XAI_REALTIME_URL}?model=${MODEL}`;
+      const connectUrl = `${XAI_REALTIME_URL}?model=${VOICE_MODEL}`;
       logger.info({ sessionId, connectUrl }, "Opening xAI Realtime WebSocket");
 
       const xaiWs = new WebSocket(connectUrl, {

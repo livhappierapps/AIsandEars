@@ -27,6 +27,7 @@ app.use(
   }),
 );
 
+// Stripe webhook must be registered BEFORE express.json() so it receives the raw Buffer
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
@@ -46,7 +47,26 @@ app.post(
   },
 );
 
-app.use(cors());
+// CORS — in production restrict to known Replit domains; in dev allow all origins
+const productionOrigins: string[] = process.env.REPLIT_DOMAINS
+  ? process.env.REPLIT_DOMAINS.split(",").map((d) => `https://${d.trim()}`)
+  : [];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Same-origin, curl, and native app requests have no origin header — always allow
+      if (!origin) return callback(null, true);
+      // Dev environment (no REPLIT_DOMAINS) — allow everything
+      if (productionOrigins.length === 0) return callback(null, true);
+      // Production — restrict to known domains
+      if (productionOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin '${origin}' not permitted`));
+    },
+    credentials: true,
+  }),
+);
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 

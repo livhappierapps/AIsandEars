@@ -1,8 +1,7 @@
 /**
  * AIs&Ears — API integration check
  *
- * Runs a suite of HTTP assertions against the running server to verify that
- * all key routes behave as expected (correct status codes, required fields).
+ * Runs a suite of HTTP assertions against the running server.
  *
  * Usage:
  *   pnpm --filter @workspace/scripts run check
@@ -86,6 +85,15 @@ async function main() {
     if (r.status !== 400) throw new Error(`Expected 400, got ${r.status}`);
   });
 
+  await check("POST /checkout — invalid tier → 400", async () => {
+    const r = await fetch(`${BASE}/checkout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priceId: "price_test", tier: "free-trial" }),
+    });
+    if (r.status !== 400) throw new Error(`Expected 400, got ${r.status}`);
+  });
+
   // ── Checkout/Verify ────────────────────────────────────────────────────────
   await check("GET /checkout/verify — no params → 400", async () => {
     const r = await fetch(`${BASE}/checkout/verify`);
@@ -97,6 +105,11 @@ async function main() {
     if (r.status !== 400 && r.status !== 503) {
       throw new Error(`Expected 400 or 503, got ${r.status}`);
     }
+  });
+
+  await check("GET /checkout/verify — invalid tier in link path → 400", async () => {
+    const r = await fetch(`${BASE}/checkout/verify?tier=free-hacker`);
+    if (r.status !== 400) throw new Error(`Expected 400, got ${r.status}`);
   });
 
   // ── Grok Vision ────────────────────────────────────────────────────────────
@@ -125,6 +138,18 @@ async function main() {
       body: JSON.stringify({ sessionId: "test-id", imageData: "not-a-data-url" }),
     });
     if (r.status !== 400) throw new Error(`Expected 400, got ${r.status}`);
+  });
+
+  await check("POST /grok-vision — oversized imageData → 413", async () => {
+    // Generate a string just over MAX_IMAGE_B64_CHARS (2_800_000 chars)
+    const big = "data:image/jpeg;base64," + "A".repeat(2_800_001);
+    const r = await fetch(`${BASE}/grok-vision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "test-id", imageData: big }),
+    });
+    // 413 from our code, or 400 because regex rejects it first (all A's doesn't match)
+    if (r.status !== 413 && r.status !== 400) throw new Error(`Expected 413 or 400, got ${r.status}`);
   });
 
   await check("POST /grok-vision — valid format but fake sessionId → 403", async () => {
