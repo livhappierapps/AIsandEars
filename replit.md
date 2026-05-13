@@ -6,12 +6,13 @@ pnpm workspace monorepo using TypeScript. Contains **AIs&Ears** — a subscripti
 
 ## Quick Mental Model
 
-- **Frontend**: one web app with Home, Packages, Settings, and live Conversation views
+- **Web frontend**: one React+Vite app with Home, Packages, Settings, and live Conversation views
+- **Mobile frontend**: Expo (React Native) app — same flow, text-based conversation + camera vision, expo-speech TTS
 - **Backend**: one API server for products, checkout, verification, vision, and realtime proxying
 - **Session state**: PostgreSQL
-- **Voice stream**: raw PCM16 over WebSocket → xAI Voice Agent API
-- **Vision**: camera snapshots over REST → xAI Vision API
-- **Payments**: Stripe checkout or payment-link fallback
+- **Voice stream**: raw PCM16 over WebSocket → xAI Voice Agent API (web); text modality + expo-speech (mobile)
+- **Vision**: camera snapshots over REST → xAI Vision API (both web and mobile)
+- **Payments**: Stripe checkout or payment-link fallback (both platforms)
 
 ## Stack
 
@@ -34,8 +35,9 @@ pnpm workspace monorepo using TypeScript. Contains **AIs&Ears** — a subscripti
 AIs&Ears IS the conversation interface. After paying, users talk to Leo inside the app with mic and camera always available. Raw PCM16 audio (16-bit LE, 24kHz) is streamed directly to xAI's Realtime Voice Agent WebSocket — no speech-to-text, no transcriptions, no middlemen.
 
 ### What Future Agents Should Know
-- This repo currently has **one live product**: the AIs&Ears web app.
-- The app has **three visible tabs**: Home, Packages, Settings.
+- This repo has **two live products**: AIs&Ears web app (`artifacts/ais-and-ears`) and AIs&Ears Mobile (`artifacts/ais-and-ears-native`).
+- Both apps share the same API server — no server-side changes needed for mobile.
+- The web app has **three visible tabs**: Home, Packages, Settings. Mobile is identical.
 - The live experience starts only after a verified paid session.
 - The backend is split cleanly: checkout/products/vision/realtime routes live in `artifacts/api-server`.
 - The frontend is the only place users interact with Leo.
@@ -43,6 +45,12 @@ AIs&Ears IS the conversation interface. After paying, users talk to Leo inside t
 - **No demo/free/test access routes exist.** All session creation is via verified Stripe payment.
 - **Tier validation is enforced** at both `/api/checkout` and `/api/checkout/verify` — only the four known tiers are accepted.
 - Prefer updating these notes instead of scattering instructions in code comments.
+- **Mobile conversation modality**: text (type → Leo responds via Grok WS), not live PCM16 mic. Camera vision works identically to web. expo-speech reads Leo's responses when "Verbal Responses" is enabled.
+- **Mobile deep link scheme**: `ais-and-ears-native://` — Stripe checkout redirects back via this scheme. Checkout accepts optional `successUrl`/`cancelUrl` overrides.
+- **`Appearance.setColorScheme()`** is not supported on React Native Web — always guard with `Platform.OS !== 'web'`.
+- **`useNativeDriver: true`** is not supported on React Native Web — use `Platform.OS !== 'web'` conditional.
+- **expo-speech** has NO config plugin — do not add it to the `plugins` array in `app.json`.
+- **Security audits** pass clean as of May 2026. Run `pnpm --filter @workspace/scripts run check` (15 integration tests) regularly.
 
 ### xAI API Notes (updated May 2026)
 - **Voice model**: `grok-voice-think-fast-1.0` — xAI's recommended voice model for the Realtime API. Passed as query param: `wss://api.x.ai/v1/realtime?model=grok-voice-think-fast-1.0`.
@@ -262,6 +270,59 @@ To save a page or screenshot:
 - Keep future agent notes here in `replit.md`
 - When in doubt, edit this file first so future agents stay oriented
 
+## Security Audit Record
+
+Last full audit: **May 13, 2026** — all three scanners run (dependency audit, SAST, HoundDog).
+
+### Results
+
+| Scanner | Status | Findings |
+|---|---|---|
+| Dependency audit | ✅ Clean | 0 critical, 0 high, 0 moderate after patches |
+| SAST | ✅ Clean (our code) | All HIGH/MEDIUM in our code were false positives (see notes) |
+| HoundDog | ✅ Clean | 0 findings |
+| Integration tests | ✅ 15/15 pass | `pnpm --filter @workspace/scripts run check` |
+
+### Patches Applied (May 2026)
+
+All applied via `pnpm-workspace.yaml` catalog + overrides — no major version bumps:
+
+| Package | From | To | Severity | CVE |
+|---|---|---|---|---|
+| `drizzle-orm` | 0.45.1 | 0.45.2 | HIGH | SQL injection via unescaped identifiers |
+| `fast-uri` | 3.1.0 | 3.1.1 | HIGH | Path traversal via encoded dot segments |
+| `picomatch` | 4.0.3 | 4.0.4 | HIGH + MOD | ReDoS + method injection in POSIX classes |
+| `brace-expansion` | 2.0.2 | 2.0.3 | MOD | Zero-step DoS |
+| `lodash` | 4.17.x | 4.18.0 | MOD | via override |
+| `path-to-regexp` | 8.3.0 | 8.4.0 | MOD | via override |
+| `postcss` | 8.4.49 | 8.5.10 | MOD | via override |
+| `vite` | 7.3.1 | 7.3.2 | MOD | via catalog bump |
+| `yaml` | 2.8.2 | 2.8.3 | MOD | via override |
+
+### SAST False Positives (documented)
+
+- **`serve.js` path traversal** — already guarded: `path.normalize` + `startsWith(STATIC_ROOT)` containment check + `platform` validated as `"ios"|"android"` allowlist before any path join.
+- **`serve.js` HTTP server** — development/production server sits behind Replit's TLS proxy; HTTPS is enforced at the edge.
+- **`mockup-sandbox/App.tsx` dynamic method** — `mod[name]` looks up an export in an already-loaded module; the module map is a static generated file, not user input.
+- **`build.js` path traversal (×38)** — build-time script; all path variables are derived from hardcoded config, not network input.
+- **`landing-page.html` missing SRI** — internal template served from our own static build; CDN integrity hashes not applicable.
+
+### One Real Fix Applied
+
+- **`PricingSection.tsx` open redirect** — `window.location.href = data.url` now validates the URL before redirecting: only `*.stripe.com` or same-origin URLs are accepted. Untrusted URLs are blocked with a toast.
+
+### How to Re-run the Audit
+
+```bash
+# Integration tests (15 checks)
+pnpm --filter @workspace/scripts run check
+
+# Security scanners — run from the Replit code_execution sandbox:
+# runDependencyAudit(), runSastScan(), runHoundDogScan()
+```
+
+---
+
 ## Known Bugs Fixed (history)
 - `checkout.ts`: `fullLink` was computed but `link` was returned — payment link success/cancel URLs were ignored. Fixed.
 - `checkout.ts verify`: Logic order bug — `session_id` undefined fell into wrong branch. Restructured.
@@ -278,3 +339,8 @@ To save a page or screenshot:
 - `use-audio-visualizer.ts`: Hook existed but was never imported anywhere — removed.
 - `middlewares/`: Empty directory — removed.
 - Unused public images (`ai-banner.png`, `ai-eye-ear.png`, `ai-hero.jpeg`, `hero-matrix.png`) — removed.
+- `PricingSection.tsx`: Open redirect — `window.location.href = data.url` now validates URL domain (stripe.com or same-origin only).
+- `ContextSettings.tsx` (mobile): `Appearance.setColorScheme()` called on web where it is not a function — guarded with `Platform.OS !== 'web'`.
+- `app/(tabs)/index.tsx` (mobile): `useNativeDriver: true` on web — replaced with `Platform.OS !== 'web'` constant.
+- `app.json` (mobile): `"expo-speech"` listed in plugins array — removed (expo-speech has no config plugin).
+- `expo-speech` version (mobile): Was `^55.0.13` (wrong, a text package), corrected to `~14.0.8` (the Expo SDK 54-compatible version).

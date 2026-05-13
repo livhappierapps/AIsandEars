@@ -35,7 +35,18 @@ export function PricingSection() {
             });
             return;
           }
-          window.location.href = data.url;
+          // Only allow redirects to stripe.com or our own origin
+          const url = data.url;
+          try {
+            const parsed = new URL(url);
+            const allowed = parsed.hostname.endsWith("stripe.com") || parsed.origin === window.location.origin;
+            if (!allowed) throw new Error("Untrusted redirect");
+          } catch {
+            toast({ title: "Redirect blocked", description: "Unexpected checkout URL.", variant: "destructive" });
+            setSelectedPriceId(null);
+            return;
+          }
+          window.location.href = url;
         },
         onError: (err: any) => {
           setSelectedPriceId(null);
