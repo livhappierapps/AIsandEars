@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/mobile/"
+title = "AIs&Ears Mobile"
+version = "1.0.0"
+id = "artifacts/ais-and-ears-native"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/mobile/" ]
+localPort = 24338
+
+[services.development]
+run = "pnpm --filter @workspace/ais-and-ears-native run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ais-and-ears-native", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/ais-and-ears-native", "run", "serve" ]
+
+[services.env]
+PORT = "24338"
+BASE_PATH = "/mobile/"

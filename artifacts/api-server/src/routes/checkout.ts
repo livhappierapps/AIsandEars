@@ -9,7 +9,6 @@ const router: IRouter = Router();
 const VALID_TIERS = new Set(["audio-monthly", "full-monthly", "audio-session", "full-session"]);
 
 // Payment links stored as env vars — set these from Stripe dashboard
-// STRIPE_LINK_AUDIO_MONTHLY, STRIPE_LINK_FULL_MONTHLY, etc.
 const PAYMENT_LINKS: Record<string, string | undefined> = {
   "audio-monthly": process.env.STRIPE_LINK_AUDIO_MONTHLY,
   "full-monthly": process.env.STRIPE_LINK_FULL_MONTHLY,
@@ -23,17 +22,48 @@ function getBaseUrl() {
   return domain ? `https://${domain}` : "http://localhost:80";
 }
 
+// Allowed schemes for custom success/cancel URLs passed by mobile clients
+const ALLOWED_CUSTOM_PREFIXES = ["ais-and-ears-native://"];
+
 router.post("/checkout", async (req, res) => {
-  const { priceId, tier } = req.body;
+  const {
+    priceId,
+    tier,
+    successUrl: customSuccessUrl,
+    cancelUrl: customCancelUrl,
+  } = req.body;
 
   if (!priceId || !tier) {
     return res.status(400).json({ error: "priceId and tier are required" });
   }
   if (!VALID_TIERS.has(tier)) {
-    return res.status(400).json({ error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}` });
+    return res.status(400).json({
+      error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}`,
+    });
   }
 
+  // Validate custom URLs — must be our domain or a known app scheme
   const baseUrl = getBaseUrl();
+  if (customSuccessUrl) {
+    const isAllowed =
+      customSuccessUrl.startsWith(baseUrl) ||
+      ALLOWED_CUSTOM_PREFIXES.some((p) => customSuccessUrl.startsWith(p));
+    if (!isAllowed) {
+      return res.status(400).json({ error: "Invalid successUrl scheme" });
+    }
+  }
+  if (customCancelUrl) {
+    const isAllowed =
+      customCancelUrl.startsWith(baseUrl) ||
+      ALLOWED_CUSTOM_PREFIXES.some((p) => customCancelUrl.startsWith(p));
+    if (!isAllowed) {
+      return res.status(400).json({ error: "Invalid cancelUrl scheme" });
+    }
+  }
+
+  const successUrl =
+    customSuccessUrl ?? `${baseUrl}/?success=true&session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = customCancelUrl ?? `${baseUrl}/?cancelled=true`;
 
   // Option A: Try live Stripe API (requires valid sk_test_ key)
   try {
@@ -43,8 +73,8 @@ router.post("/checkout", async (req, res) => {
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
       mode: isSession ? "payment" : "subscription",
-      success_url: `${baseUrl}/?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/?cancelled=true`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
       metadata: { tier },
     });
     return res.json({ url: session.url });
@@ -55,9 +85,9 @@ router.post("/checkout", async (req, res) => {
   // Option B: Fall back to pre-configured Stripe Payment Links
   const link = PAYMENT_LINKS[tier];
   if (link) {
-    const successUrl = encodeURIComponent(`${baseUrl}/?success=true&tier=${tier}`);
-    const cancelUrl = encodeURIComponent(`${baseUrl}/?cancelled=true`);
-    const fullLink = `${link}?success_url=${successUrl}&cancel_url=${cancelUrl}`;
+    const encodedSuccess = encodeURIComponent(successUrl);
+    const encodedCancel = encodeURIComponent(cancelUrl);
+    const fullLink = `${link}?success_url=${encodedSuccess}&cancel_url=${encodedCancel}`;
     return res.json({ url: fullLink, paymentLink: true });
   }
 
@@ -84,7 +114,9 @@ router.get("/checkout/verify", async (req, res) => {
 
       const resolvedTier = (stripeSession.metadata?.tier ?? "audio-session") as string;
       if (!VALID_TIERS.has(resolvedTier)) {
-        return res.status(400).json({ error: "Unrecognized tier in Stripe session metadata" });
+        return res
+          .status(400)
+          .json({ error: "Unrecognized tier in Stripe session metadata" });
       }
       const isTimedSession = resolvedTier.includes("session");
 
@@ -114,10 +146,14 @@ router.get("/checkout/verify", async (req, res) => {
   // Payment-link or link_ success — grant access by tier
   if (session_id?.startsWith("link_") || tier) {
     if (!tier) {
-      return res.status(400).json({ error: "tier is required for payment link verification" });
+      return res
+        .status(400)
+        .json({ error: "tier is required for payment link verification" });
     }
     if (!VALID_TIERS.has(tier)) {
-      return res.status(400).json({ error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}` });
+      return res.status(400).json({
+        error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}`,
+      });
     }
     const isTimedSession = tier.includes("session");
     const existing = await storage.createSession({
