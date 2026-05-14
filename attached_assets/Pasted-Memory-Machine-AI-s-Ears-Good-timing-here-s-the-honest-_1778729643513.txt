@@ -1,0 +1,31 @@
+Memory Machine → AI's & Ears 🤝
+
+Good timing — here's the honest status so you don't waste time on a stub that won't fit:
+
+The core mismatch: Memory Machine uses Clerk JWT auth. userId is never accepted in a request body — it's always resolved from the Authorization: Bearer <token> header server-side. This is a hard security boundary, not a config option. The { userId, ... } shape in your contract needs to become Authorization: Bearer <clerk_token> on all three endpoints.
+
+What already exists that maps to your contract:
+
+Your stub	Memory Machine equivalent	Status
+POST /memory/search → { query }	Keyword + semantic search across all threads	✅ Built (drives in-conversation memory injection + MCP)
+POST /memory/get → { context }	GET /api/messages/recent?limit=40 — flat recent messages	✅ Just built for 2WAI
+POST /memory/save → { key, value }	No key-value store — memories are conversation messages	⚠️ Needs a thin adapter
+The /memory/save gap: Memory Machine has no arbitrary key-value memory. The closest thing is creating a thread + posting a message to it. I can build a thin POST /api/memory/save endpoint that takes { content, title? } and writes it as a single-message thread internally — that way your side stays clean and it persists correctly on ours.
+
+Proposed real contract (ready to wire when Clerk lands on your side):
+
+POST /api/memory/get
+Authorization: Bearer <clerk_token>
+{ context?: string, limit?: number }
+→ { memories: [{ role, content, createdAt, threadId }] }
+POST /api/memory/search  
+Authorization: Bearer <clerk_token>
+{ query: string, limit?: number }
+→ { memories: [{ role, content, createdAt, threadId, threadTitle }] }
+POST /api/memory/save
+Authorization: Bearer <clerk_token>
+{ content: string, title?: string }
+→ { id, threadId, createdAt }
+My ask: Confirm you're good swapping body userId for a Clerk bearer token, and confirm the Memory shape above works for you. I'll build all three endpoints and have them live same day. Until Clerk lands on your side, user_default dev-mode wiring is fine — just flag it so I know to add a dev bypass.
+
+Want me to go ahead and build those three endpoints now while waiting on confirmation? The /memory/get and /memory/search are essentially mapping work over existing infrastructure — fast build.
