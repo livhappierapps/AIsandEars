@@ -31,10 +31,11 @@ app.use(
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
-  async (req, res) => {
+  async (req, res): Promise<void> => {
     const signature = req.headers["stripe-signature"];
     if (!signature) {
-      return res.status(400).json({ error: "Missing stripe-signature" });
+      res.status(400).json({ error: "Missing stripe-signature" });
+      return;
     }
     const sig = Array.isArray(signature) ? signature[0] : signature;
     try {

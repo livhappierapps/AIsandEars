@@ -47,7 +47,7 @@ scripts/
 - **`useNativeDriver: true`** fails on React Native Web — use `Platform.OS !== 'web'` conditional.
 - **expo-speech has NO config plugin** — never add it to the `plugins` array in `app.json`.
 - **Stripe key format**: `STRIPE_SECRET_KEY` must be `sk_test_51...` (Standard). The `mk_` prefix (Restricted key) causes 401 errors.
-- **TS errors that are pre-existing and non-breaking**: `TS7030` in Express 5 async handlers; `TS2353`/`TS2307` in `api-server/index.ts`. Server runs correctly. All other TS errors have been resolved.
+- **TypeScript**: All packages fully clean as of May 16 2026 (`pnpm run typecheck` — 0 errors across all 5 packages). Previously pre-existing errors (`TS7030`, `TS2353`, `TS2307`, `TS2367`, `TS2352`) have all been resolved.
 - **Security audit last run**: May 16 2026 — all clean. See Security Audit section.
 - **Audio processing**: `noiseSuppression`, `echoCancellation`, and `autoGainControl` are all disabled in getUserMedia — Leo receives raw unfiltered audio including music, ambient sound, and instrument notes.
 - **Vision interval**: Auto-vision sends a frame every 3 seconds (reduced from 12s). True sub-second vision not feasible via REST — would require xAI Realtime API image frame support over WebSocket (not yet available).
@@ -174,7 +174,7 @@ True high-frequency vision (sub-3s) would require xAI Realtime API image frame s
 | SAST (our code) | ✅ 0 high/critical — 49 medium, all in `build.js` (build-time only, false positives) |
 | HoundDog | ✅ 0 findings |
 | Integration tests | ✅ 15/15 `pnpm --filter @workspace/scripts run check` |
-| Web app typecheck | ✅ Clean (TS2741 in Home.tsx fixed) |
+| Full typecheck | ✅ All 5 packages clean — `pnpm run typecheck` exits 0 |
 
 **SAST false positives (our code)**: All findings are in `ais-and-ears-native/scripts/build.js` — build-time file path operations using internal timestamps and platform strings, no network/user input. Same pattern confirmed safe in prior audit.
 
@@ -184,8 +184,10 @@ True high-frequency vision (sub-3s) would require xAI Realtime API image frame s
 
 - **`mk_` Stripe key** — Restricted key prefix causes 401. Must use Standard `sk_test_...` key.
 - **Stripe seed warning at startup** — Expected when using `mk_` key; products fall back to hardcoded list. Non-blocking.
-- **TS7030 / TS2353 / TS2307 in api-server** — Pre-existing Express 5 async handler quirks. Server runs correctly.
 - **Music filtered as background noise** — Fixed May 16 2026: disabled `noiseSuppression`, `echoCancellation`, `autoGainControl` in getUserMedia. Leo now receives raw unfiltered audio.
 - **Vision interval too slow** — Fixed May 16 2026: reduced from 12s to 3s.
+- **TS7030 in api-server routes** — Fixed May 16 2026: all async handlers use `async (req, res): Promise<void>` + `return;` after each `res.json()`.
+- **TS2353 / TS2307 in api-server/index.ts** — Fixed May 16 2026: removed `schema` arg from `runMigrations`, added `pg` + `@types/pg` as direct api-server dependencies.
+- **TS2367 / TS2352 in mobile app** — Fixed May 16 2026: `onclose` callback uses functional `setStatus` (avoids stale closure narrowing); `useColors` cast narrowed to `{ dark: typeof colors.light }`.
 - **TS2741 in Home.tsx** — Fixed May 16 2026: added `queryKey` to `useVerifyCheckout` options (TanStack Query v5 requirement).
 - All other previously logged bugs (stale closures, CORS, model name, WebSocket cleanup, imageData validation) have been resolved. See git history for details.

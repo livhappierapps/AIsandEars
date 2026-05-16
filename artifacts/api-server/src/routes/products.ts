@@ -65,7 +65,7 @@ const FALLBACK_PRODUCTS = [
   },
 ];
 
-router.get("/products", async (_req, res) => {
+router.get("/products", async (_req, res): Promise<void> => {
   // Try live DB first (populated by stripe-replit-sync)
   try {
     const rows = await storage.listProductsWithPrices();
@@ -91,7 +91,8 @@ router.get("/products", async (_req, res) => {
     }
     const dbProducts = Array.from(productsMap.values());
     if (dbProducts.length > 0) {
-      return res.json({ data: dbProducts });
+      res.json({ data: dbProducts });
+      return;
     }
   } catch (_dbErr) {
     // DB not available — fall through
@@ -122,7 +123,8 @@ router.get("/products", async (_req, res) => {
     }
     const stripeProducts = Array.from(productsMap.values());
     if (stripeProducts.length > 0) {
-      return res.json({ data: stripeProducts });
+      res.json({ data: stripeProducts });
+      return;
     }
   } catch (_stripeErr) {
     logger.warn("Stripe API unavailable — using hardcoded fallback products");

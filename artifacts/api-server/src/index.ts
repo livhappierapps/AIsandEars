@@ -12,7 +12,7 @@ async function initStripeSchema() {
   }
   try {
     logger.info("Initializing Stripe schema...");
-    await runMigrations({ databaseUrl, schema: "stripe" });
+    await runMigrations({ databaseUrl });
     logger.info("Stripe schema ready");
   } catch (err) {
     logger.warn({ err }, "Stripe schema migration failed — non-critical");

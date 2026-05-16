@@ -146,8 +146,8 @@ export default function ConversationScreen() {
     };
 
     ws.onclose = (e) => {
-      if (e.code !== 1000 && status !== "ended") {
-        setStatus("error");
+      if (e.code !== 1000) {
+        setStatus((current) => current === "ended" ? current : "error");
       }
     };
 

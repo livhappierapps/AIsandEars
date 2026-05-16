@@ -13,34 +13,41 @@ const MAX_IMAGE_B64_CHARS = 2_800_000;
 // Note: xAI chat/completions endpoint is deprecated upstream; migrate to Responses API when stable
 const VISION_MODEL = "grok-2-vision-1212";
 
-router.post("/grok-vision", async (req, res) => {
+router.post("/grok-vision", async (req, res): Promise<void> => {
   const { sessionId, imageData, prompt, isFirstFrame } = req.body;
 
   if (!sessionId) {
-    return res.status(400).json({ error: "sessionId is required" });
+    res.status(400).json({ error: "sessionId is required" });
+    return;
   }
   if (!imageData) {
-    return res.status(400).json({ error: "imageData is required" });
+    res.status(400).json({ error: "imageData is required" });
+    return;
   }
   if (typeof imageData !== "string" || !DATA_URL_RE.test(imageData)) {
-    return res.status(400).json({ error: "imageData must be a valid base64 data URL (jpeg/png/webp/gif)" });
+    res.status(400).json({ error: "imageData must be a valid base64 data URL (jpeg/png/webp/gif)" });
+    return;
   }
   if (imageData.length > MAX_IMAGE_B64_CHARS) {
-    return res.status(413).json({ error: "imageData too large — max 2MB image" });
+    res.status(413).json({ error: "imageData too large — max 2MB image" });
+    return;
   }
 
   try {
     const session = await storage.getSession(sessionId);
     if (!session) {
-      return res.status(403).json({ error: "Invalid session" });
+      res.status(403).json({ error: "Invalid session" });
+      return;
     }
     if (session.expiresAt && new Date() > session.expiresAt) {
-      return res.status(403).json({ error: "Session expired" });
+      res.status(403).json({ error: "Session expired" });
+      return;
     }
 
     const xaiKey = process.env.XAI_API_KEY;
     if (!xaiKey) {
-      return res.status(503).json({ error: "xAI API key not configured on server" });
+      res.status(503).json({ error: "xAI API key not configured on server" });
+      return;
     }
 
     const systemPrompt = isFirstFrame
@@ -87,7 +94,8 @@ router.post("/grok-vision", async (req, res) => {
     if (!response.ok) {
       const text = await response.text();
       req.log?.error({ status: response.status, text }, "xAI Vision API error");
-      return res.status(502).json({ error: "Grok Vision API error", details: text });
+      res.status(502).json({ error: "Grok Vision API error", details: text });
+      return;
     }
 
     const data = (await response.json()) as {
