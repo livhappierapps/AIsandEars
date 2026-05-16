@@ -22,7 +22,7 @@ type Message = {
   hasImage?: boolean;
 };
 
-const VISION_INTERVAL_MS = 12_000;
+const VISION_INTERVAL_MS = 3_000;
 
 export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: ConversationFeedProps) {
   const isFull = tier.includes("full");
@@ -214,7 +214,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         // Only call getUserMedia when at least one media type is requested
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: useMic
-            ? { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
+            ? { sampleRate: 24000, channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
             : false,
           video: useCam ? { facingMode: "user", width: 640, height: 360 } : false,
         });
@@ -329,7 +329,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       addMessage("system", "Auto-vision paused.");
     } else {
       setVisionActive(true);
-      addMessage("system", "Auto-vision active — Leo sees a new frame every 12 seconds.");
+      addMessage("system", "Auto-vision active — Leo sees a new frame every 3 seconds.");
       shareCamera();
       visionIntervalRef.current = setInterval(shareCamera, VISION_INTERVAL_MS);
     }
