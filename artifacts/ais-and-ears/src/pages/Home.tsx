@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, RefreshCcw } from "lucide-react";
-import { useVerifyCheckout } from "@workspace/api-client-react";
+import { useVerifyCheckout, getVerifyCheckoutQueryKey } from "@workspace/api-client-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { TabBar, type TabId } from "@/components/layout/TabBar";
 import { ConversationFeed } from "@/components/feed/ConversationFeed";
@@ -49,7 +49,7 @@ export default function Home() {
     : { session_id: sessionId || "" };
 
   const verifyQuery = useVerifyCheckout(verifyParams as any, {
-    query: { enabled: !!sessionId && !directSession, retry: false },
+    query: { queryKey: getVerifyCheckoutQueryKey(verifyParams as any), enabled: !!sessionId && !directSession, retry: false },
   });
 
   const handleCloseFeed = () => {

@@ -47,8 +47,11 @@ scripts/
 - **`useNativeDriver: true`** fails on React Native Web — use `Platform.OS !== 'web'` conditional.
 - **expo-speech has NO config plugin** — never add it to the `plugins` array in `app.json`.
 - **Stripe key format**: `STRIPE_SECRET_KEY` must be `sk_test_51...` (Standard). The `mk_` prefix (Restricted key) causes 401 errors.
-- **TS errors that are pre-existing and non-breaking**: `TS7030` in Express 5 async handlers; `TS2353`/`TS2307` in `api-server/index.ts`. Server runs correctly.
-- **Security audit last run**: May 13 2026 — all clean. See Security Audit section.
+- **TS errors that are pre-existing and non-breaking**: `TS7030` in Express 5 async handlers; `TS2353`/`TS2307` in `api-server/index.ts`. Server runs correctly. All other TS errors have been resolved.
+- **Security audit last run**: May 16 2026 — all clean. See Security Audit section.
+- **Audio processing**: `noiseSuppression`, `echoCancellation`, and `autoGainControl` are all disabled in getUserMedia — Leo receives raw unfiltered audio including music, ambient sound, and instrument notes.
+- **Vision interval**: Auto-vision sends a frame every 3 seconds (reduced from 12s). True sub-second vision not feasible via REST — would require xAI Realtime API image frame support over WebSocket (not yet available).
+- **Web app UI components**: Only 12 shadcn components remain (actively used ones). 34 unused components were removed in May 2026 cleanup.
 
 ## xAI API (updated May 2026)
 
@@ -74,8 +77,8 @@ Model `grok-voice-think-fast-1.0` · Voice `Ara` · Turn detection `server_vad` 
 ## Architecture
 
 ```
-Web:    AudioWorklet (PCM16 @ 24kHz) → WS /api/grok-live → xAI Voice Agent API
-        Camera frame → POST /api/grok-vision → grok-2-vision-1212
+Web:    AudioWorklet (PCM16 @ 24kHz, raw/unfiltered) → WS /api/grok-live → xAI Voice Agent API
+        Camera frame (every 3s) → POST /api/grok-vision → grok-2-vision-1212
 Mobile: TextInput → WS /api/grok-live (text modality) → xAI
         ImagePicker → POST /api/grok-vision → grok-2-vision-1212
 ```
@@ -144,41 +147,45 @@ Mobile: TextInput → WS /api/grok-live (text modality) → xAI
 ## Road Map
 
 ### Crown Jewel (in progress — separate repo)
-A bundled app combining AIs&Ears + Memory Machine into one product sold in app stores. The Memory Machine gives the AI persistent memory. AIs&Ears provides the real-time voice/vision interface. Architecture TBD — the integration point is a **Memory API stub** that the Memory Machine agent will implement. The stub contract should be:
+A bundled app combining AIs&Ears + Memory Machine into one product sold in app stores. The Memory Machine gives the AI persistent memory. AIs&Ears provides the real-time voice/vision interface.
 
-```typescript
-// Memory API stub — to be implemented by Memory Machine
-interface MemoryAPI {
-  getMemories(userId: string, context: string): Promise<Memory[]>;
-  saveMemory(userId: string, key: string, value: string): Promise<void>;
-  searchMemories(userId: string, query: string): Promise<Memory[]>;
-}
-interface Memory { key: string; value: string; timestamp: string; }
-// POST /memory/get    { userId, context }  → { memories: Memory[] }
-// POST /memory/save   { userId, key, value }
-// POST /memory/search { userId, query }    → { memories: Memory[] }
+**Updated Memory API contract (agreed with Whiz / Memory Machine, May 2026):**
+- Auth: `Authorization: Bearer <clerk_token>` on all three endpoints — NO userId in body (hard security boundary)
+- Memory shape: `{ role, content, createdAt, threadId }` — maps directly to Grok context injection
 ```
-
-Use the stub pattern (`// PLUG IN MEMORY API HERE`) — no contract from the Memory Machine agent exists yet on this side.
+POST /api/memory/get    { context?: string, limit?: number }  → { memories: [{ role, content, createdAt, threadId }] }
+POST /api/memory/search { query: string, limit?: number }     → { memories: [{ role, content, createdAt, threadId, threadTitle }] }
+POST /api/memory/save   { content: string, title?: string }   → { id, threadId, createdAt }
+```
+- **Blocker**: Clerk auth must land on AIs&Ears side before wiring. Dev bypass: `user_default` wiring until then.
+- Use the stub pattern (`// PLUG IN MEMORY API HERE`) — Whiz is building all three endpoints.
 
 ### AIs&Ears Mobile — Next Steps
 Live PCM16 mic streaming (replace text modality with `react-native-live-audio-stream` + existing `/api/grok-live` WS proxy).
 
-## Security Audit — May 13 2026
+### Vision — Future
+True high-frequency vision (sub-3s) would require xAI Realtime API image frame support over WebSocket. Current 3s REST approach is the cost-effective ceiling until that API feature exists.
+
+## Security Audit — May 16 2026
 
 | Scanner | Status |
 |---|---|
-| Dependency audit | ✅ 0 critical · 0 high · 0 moderate |
-| SAST (our code) | ✅ Clean — all high/medium were false positives (see below) |
+| Dependency audit | ✅ 0 critical · 0 high · 0 moderate · 0 low |
+| SAST (our code) | ✅ 0 high/critical — 49 medium, all in `build.js` (build-time only, false positives) |
 | HoundDog | ✅ 0 findings |
 | Integration tests | ✅ 15/15 `pnpm --filter @workspace/scripts run check` |
+| Web app typecheck | ✅ Clean (TS2741 in Home.tsx fixed) |
 
-**Patches applied** (all minor, no breaking changes): `drizzle-orm` 0.45.2, `fast-uri` 3.1.1, `picomatch` 4.0.4, `brace-expansion` 2.0.3, `lodash` 4.18.0, `path-to-regexp` 8.4.0, `postcss` 8.5.10, `vite` 7.3.2, `yaml` 2.8.3. Applied via `pnpm-workspace.yaml` catalog + overrides.
+**SAST false positives (our code)**: All findings are in `ais-and-ears-native/scripts/build.js` — build-time file path operations using internal timestamps and platform strings, no network/user input. Same pattern confirmed safe in prior audit.
 
-**SAST false positives**: `serve.js` path traversal (has `normalize` + `startsWith(STATIC_ROOT)` guard + platform allowlist), `serve.js` HTTP (TLS at Replit proxy edge), `build.js` (build-time only, no network input), `mockup-sandbox/App.tsx` dynamic method (static generated module map).
+**Previous patches still in place**: `drizzle-orm` 0.45.2, `fast-uri` 3.1.1, `picomatch` 4.0.4, `brace-expansion` 2.0.3, `lodash` 4.18.0, `path-to-regexp` 8.4.0, `postcss` 8.5.10, `vite` 7.3.2, `yaml` 2.8.3.
 
 ## Known Issues & Fixed Bugs
 
 - **`mk_` Stripe key** — Restricted key prefix causes 401. Must use Standard `sk_test_...` key.
 - **Stripe seed warning at startup** — Expected when using `mk_` key; products fall back to hardcoded list. Non-blocking.
-- All previously logged bugs (stale closures, CORS, model name, WebSocket cleanup, imageData validation, unused files) have been resolved. See git history for details.
+- **TS7030 / TS2353 / TS2307 in api-server** — Pre-existing Express 5 async handler quirks. Server runs correctly.
+- **Music filtered as background noise** — Fixed May 16 2026: disabled `noiseSuppression`, `echoCancellation`, `autoGainControl` in getUserMedia. Leo now receives raw unfiltered audio.
+- **Vision interval too slow** — Fixed May 16 2026: reduced from 12s to 3s.
+- **TS2741 in Home.tsx** — Fixed May 16 2026: added `queryKey` to `useVerifyCheckout` options (TanStack Query v5 requirement).
+- All other previously logged bugs (stale closures, CORS, model name, WebSocket cleanup, imageData validation) have been resolved. See git history for details.
