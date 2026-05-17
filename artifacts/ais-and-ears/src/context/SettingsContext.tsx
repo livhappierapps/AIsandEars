@@ -6,6 +6,17 @@ export interface AppSettings {
   micEnabled: boolean;
   verbalResponses: boolean;
   autoVision: boolean;
+  /**
+   * BYOK — Bring Your Own xAI API Key
+   *
+   * If set, this key is used instead of the server's XAI_API_KEY for Realtime
+   * and Vision calls. Stored in localStorage (client-side only — never sent to
+   * our server's DB). Payment is still required; your key just lifts xAI's
+   * per-account rate limits so you're not blocked by their daily voice cap.
+   *
+   * Format: "xai-..." — get yours at console.x.ai
+   */
+  xaiApiKey: string;
 }
 
 const DEFAULTS: AppSettings = {
@@ -14,6 +25,7 @@ const DEFAULTS: AppSettings = {
   micEnabled: true,
   verbalResponses: true,
   autoVision: true,
+  xaiApiKey: "",
 };
 
 interface SettingsContextValue {

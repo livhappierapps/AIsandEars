@@ -110,7 +110,8 @@ export default function ConversationScreen() {
   useEffect(() => {
     if (!verifiedSessionId || status !== "connecting") return;
 
-    const wsUrl = `wss://${DOMAIN}/api/grok-live?sessionId=${verifiedSessionId}`;
+    const userKey = settings.xaiApiKey?.trim();
+    const wsUrl = `wss://${DOMAIN}/api/grok-live?sessionId=${verifiedSessionId}${userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
@@ -287,6 +288,7 @@ export default function ConversationScreen() {
     ]);
 
     try {
+      const userKey = settings.xaiApiKey?.trim();
       const res = await fetch(`https://${DOMAIN}/api/grok-vision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -295,6 +297,7 @@ export default function ConversationScreen() {
           imageData,
           prompt: "What do you see right now?",
           isFirstFrame: !hasUsedCamera,
+          ...(userKey ? { userKey } : {}),
         }),
       });
       const data = await res.json() as { message?: string; error?: string };

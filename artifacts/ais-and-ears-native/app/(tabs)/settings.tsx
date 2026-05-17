@@ -7,6 +7,8 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -99,6 +101,54 @@ export default function SettingsTab() {
           onToggle={() => toggle("isDark")}
           colors={colors}
         />
+      </View>
+
+      {/* BYOK — xAI API Key */}
+      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+        Your xAI API Key
+      </Text>
+      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={styles.byokRow}>
+          <View style={[styles.iconWrapper, { backgroundColor: colors.muted }]}>
+            <Ionicons name="key-outline" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.rowText}>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Bring Your Own Key</Text>
+            <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>
+              Bypass xAI's daily voice limits with your own key. Stays on-device — never stored by us.
+            </Text>
+          </View>
+        </View>
+        <TextInput
+          style={[
+            styles.keyInput,
+            {
+              backgroundColor: colors.input,
+              borderColor: settings.xaiApiKey ? colors.primary + "60" : colors.border,
+              color: colors.foreground,
+            },
+          ]}
+          placeholder="xai-..."
+          placeholderTextColor={colors.mutedForeground}
+          value={settings.xaiApiKey}
+          onChangeText={(v) => update({ xaiApiKey: v })}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          spellCheck={false}
+        />
+        {settings.xaiApiKey ? (
+          <View style={styles.keyActive}>
+            <View style={[styles.keyDot, { backgroundColor: colors.primary }]} />
+            <Text style={[styles.keyActiveText, { color: colors.primary }]}>
+              Key active — usage billed to your xAI account
+            </Text>
+          </View>
+        ) : (
+          <Text style={[styles.keyHint, { color: colors.mutedForeground }]}>
+            Get a key at console.x.ai
+          </Text>
+        )}
       </View>
 
       {/* App info */}
@@ -202,6 +252,46 @@ const styles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     marginLeft: 66,
+  },
+  byokRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    gap: 14,
+  },
+  keyInput: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: "Raleway_400Regular",
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
+  keyActive: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  keyDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  keyActiveText: {
+    fontFamily: "Raleway_400Regular",
+    fontSize: 11,
+  },
+  keyHint: {
+    fontFamily: "Raleway_400Regular",
+    fontSize: 11,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   footer: {
     alignItems: "center",

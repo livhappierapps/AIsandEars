@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { useSettings } from "@/context/SettingsContext";
-import { Moon, Sun, Mic, Video, MessageSquare, Eye, Info } from "lucide-react";
+import { Moon, Sun, Mic, Video, MessageSquare, Eye, Info, Key } from "lucide-react";
 
 interface SettingRowProps {
   icon: React.ReactNode;
@@ -75,7 +76,7 @@ export function SettingsTab() {
             <SettingRow
               icon={<Eye className="w-4 h-4 text-primary" />}
               label="Auto-Vision"
-              description="Automatically send a camera frame to Leo every 12 seconds."
+              description="Automatically send a camera frame to Leo every 3 seconds."
               checked={settings.autoVision}
               onCheckedChange={(v) => setSetting("autoVision", v)}
             />
@@ -96,8 +97,48 @@ export function SettingsTab() {
           </div>
         </motion.section>
 
-        {/* Coming soon */}
+        {/* BYOK — xAI API Key */}
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <h3 className="text-xs font-semibold tracking-widest uppercase text-primary mb-1">Your xAI API Key</h3>
+          <div className="glass-panel rounded-2xl px-4 py-4 border border-primary/10 space-y-3">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+                <Key className="w-4 h-4 text-primary" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">Bring Your Own Key</p>
+                <p className="text-xs text-muted-foreground leading-snug mt-0.5">
+                  Plug in your own xAI API key to bypass their daily voice limits.
+                  Your key stays in your browser — we never store it. Payment still required.
+                </p>
+              </div>
+            </div>
+            <Input
+              type="password"
+              placeholder="xai-..."
+              value={settings.xaiApiKey}
+              onChange={(e) => setSetting("xaiApiKey", e.target.value)}
+              className="font-mono text-xs bg-background/50 border-primary/20 focus:border-primary/60"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            {settings.xaiApiKey && (
+              <p className="text-xs text-primary/70 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />
+                Key active — your usage goes to your xAI account
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground/60">
+              Get a key at{" "}
+              <a href="https://console.x.ai" target="_blank" rel="noopener noreferrer" className="text-primary/80 hover:text-primary underline underline-offset-2">
+                console.x.ai
+              </a>
+            </p>
+          </div>
+        </motion.section>
+
+        {/* Coming soon */}
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
           <h3 className="text-xs font-semibold tracking-widest uppercase text-muted-foreground mb-1">Coming Soon</h3>
           <div className="glass-panel rounded-2xl px-4 py-4 border border-muted/20 opacity-50">
             <div className="flex items-center gap-3">

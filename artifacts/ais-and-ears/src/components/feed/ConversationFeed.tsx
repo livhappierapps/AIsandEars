@@ -239,9 +239,11 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         }
       }
 
-      // Open WebSocket
+      // Open WebSocket — include BYOK key if the user set one in Settings.
+      // The server uses it instead of its own key; payment still validates the session.
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${proto}//${window.location.host}/api/grok-live?sessionId=${sessionId}`;
+      const userKey = settings.xaiApiKey?.trim();
+      const wsUrl = `${proto}//${window.location.host}/api/grok-live?sessionId=${sessionId}${userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -304,10 +306,17 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     addMessage("user", "📷 Sharing camera view with Leo...", true);
 
     try {
+      const userKey = settings.xaiApiKey?.trim();
       const res = await fetch("/api/grok-vision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, imageData, prompt: "What do you see right now?", isFirstFrame: false }),
+        body: JSON.stringify({
+          sessionId,
+          imageData,
+          prompt: "What do you see right now?",
+          isFirstFrame: false,
+          ...(userKey ? { userKey } : {}),
+        }),
       });
       const data = await res.json();
       if (res.ok) {

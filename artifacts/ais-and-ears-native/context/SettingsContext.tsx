@@ -14,6 +14,16 @@ export interface Settings {
   verbalResponses: boolean;
   autoVision: boolean;
   isDark: boolean;
+  /**
+   * BYOK — Bring Your Own xAI API Key
+   *
+   * If set, passed to the server as `userKey` on WebSocket and vision requests.
+   * Stored in AsyncStorage on-device only — never persisted server-side.
+   * Payment is still required; your key just lifts xAI's per-account voice cap.
+   *
+   * Format: "xai-..." — get yours at console.x.ai
+   */
+  xaiApiKey: string;
 }
 
 interface SettingsContextType {
@@ -27,6 +37,7 @@ const DEFAULTS: Settings = {
   verbalResponses: true,
   autoVision: false,
   isDark: true,
+  xaiApiKey: "",
 };
 
 const STORAGE_KEY = "@aisears/settings";
