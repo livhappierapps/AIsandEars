@@ -1,3 +1,21 @@
+/**
+ * conversation.tsx — Live session screen
+ *
+ * Voice pipeline (iOS):
+ *   Mic → expo-av LINEAR_PCM 24kHz mono → 500ms WAV chunks
+ *   → skip 44-byte WAV header → raw PCM16 bytes
+ *   → base64 → input_audio_buffer.append over WebSocket
+ *   → xAI server_vad detects speech end → Leo responds in text
+ *   → expo-speech reads Leo's response aloud
+ *
+ * Text pipeline (all platforms):
+ *   TextInput → conversation.item.create + response.create → text stream
+ *
+ * Vision: tap camera → ImagePicker → POST /api/grok-vision → Leo describes what it sees
+ */
+
+import { Audio } from "expo-av";
+import * as FileSystem from "expo-file-system";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -36,7 +54,41 @@ interface ChatMessage {
   isStreaming: boolean;
   timestamp: Date;
   isVision?: boolean;
+  isVoice?: boolean;
 }
+
+// ── PCM16 streaming config ──────────────────────────────────────────────────
+// xAI Realtime API requires: PCM16, 24 kHz, mono, little-endian
+// iOS LINEAR_PCM records exactly this format inside a WAV container.
+// The WAV container header is always 44 bytes — we strip it before sending.
+// Android: expo-av cannot output raw PCM16 — voice input is iOS-only for now.
+
+const WAV_HEADER_BYTES = 44;
+
+const MIC_RECORDING_OPTIONS: Audio.RecordingOptions = {
+  android: {
+    extension: ".wav",
+    outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+    audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+    sampleRate: 24000,
+    numberOfChannels: 1,
+    bitRate: 384000,
+  },
+  ios: {
+    extension: ".wav",
+    audioQuality: Audio.IOSAudioQuality.MAX,
+    outputFormat: Audio.IOSOutputFormat.LINEARPCM,
+    sampleRate: 24000,
+    numberOfChannels: 1,
+    bitRate: 384000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {},
+};
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 export default function ConversationScreen() {
   const colors = useColors();
@@ -44,7 +96,6 @@ export default function ConversationScreen() {
   const router = useRouter();
   const { settings } = useSettings();
 
-  // Route params — arrives as cs_xxx (unverified) or UUID (verified)
   const params = useLocalSearchParams<{ session_id?: string; tier?: string }>();
 
   const [status, setStatus] = useState<ConnStatus>("idle");
@@ -56,24 +107,24 @@ export default function ConversationScreen() {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [hasUsedCamera, setHasUsedCamera] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const streamingIdRef = useRef<string | null>(null);
   const inputRef = useRef<TextInput>(null);
 
+  // Mic refs — using refs (not state) so async recording loop reads current values
+  const isMicActiveRef = useRef(false);
+  const currentRecordingRef = useRef<Audio.Recording | null>(null);
+
   // ── Session verification ─────────────────────────────────────────────────
   useEffect(() => {
     const rawSessionId = params.session_id;
-    if (!rawSessionId) {
-      setStatus("error");
-      return;
-    }
+    if (!rawSessionId) { setStatus("error"); return; }
 
     if (rawSessionId.startsWith("cs_") || rawSessionId.startsWith("pi_")) {
-      // Unverified Stripe checkout session — verify it first
       verifyStripeSession(rawSessionId, params.tier);
     } else {
-      // Already a UUID (coming from within-app navigation)
       setVerifiedSessionId(rawSessionId);
       setTier(params.tier ?? null);
       setStatus("connecting");
@@ -92,9 +143,7 @@ export default function ConversationScreen() {
         expiresAt?: string | null;
         error?: string;
       };
-      if (!res.ok || !data.sessionId) {
-        throw new Error(data.error ?? "Session verification failed");
-      }
+      if (!res.ok || !data.sessionId) throw new Error(data.error ?? "Session verification failed");
       setVerifiedSessionId(data.sessionId);
       setTier(data.tier ?? null);
       if (data.expiresAt) setExpiresAt(new Date(data.expiresAt));
@@ -111,29 +160,45 @@ export default function ConversationScreen() {
     if (!verifiedSessionId || status !== "connecting") return;
 
     const userKey = settings.xaiApiKey?.trim();
-    const wsUrl = `wss://${DOMAIN}/api/grok-live?sessionId=${verifiedSessionId}${userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""}`;
+    const wsUrl = `wss://${DOMAIN}/api/grok-live?sessionId=${verifiedSessionId}${
+      userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""
+    }`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setStatus("connected");
-      // Configure session for text modality
-      ws.send(
-        JSON.stringify({
-          type: "session.update",
-          session: {
-            modalities: ["text"],
-            instructions:
-              "You are Leo, a warm, genuinely curious AI assistant accessed via a mobile app. " +
-              "Be concise (2-3 sentences), conversational, and engaging. " +
-              "If asked about what you can see, acknowledge you can receive camera snapshots via the vision button.",
-            temperature: 0.85,
-            max_response_output_tokens: 200,
+
+      // Configure session:
+      //   - modalities: ["text"] — Leo responds in text, expo-speech reads it aloud
+      //   - input_audio_format: "pcm16" — we stream raw PCM16 from the mic
+      //   - server_vad — xAI detects when user stops speaking (no manual commit needed)
+      //   - silence_duration_ms: 700 — extra 100ms vs web to absorb mobile network jitter
+      ws.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          modalities: ["text"],
+          input_audio_format: "pcm16",
+          instructions:
+            "You are Leo, a warm, curious, and present AI. " +
+            "Users can speak to you directly via microphone or type messages. " +
+            "Be concise (2-3 sentences), conversational, and natural. " +
+            "If asked about what you can see, acknowledge you can receive camera snapshots via the vision button.",
+          temperature: 0.85,
+          max_response_output_tokens: 200,
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 700,
           },
-        })
+        },
+      }));
+
+      addLeoMessage(
+        "Connected — I can hear you. Tap the mic to speak, or type below. Tap 📷 to share your view.",
+        false,
       );
-      // Welcome message
-      addLeoMessage("Connected. I can hear you — type your message below, or tap the camera to share your view.", false);
     };
 
     ws.onmessage = (event) => {
@@ -142,9 +207,7 @@ export default function ConversationScreen() {
       } catch {}
     };
 
-    ws.onerror = () => {
-      setStatus("error");
-    };
+    ws.onerror = () => { setStatus("error"); };
 
     ws.onclose = (e) => {
       if (e.code !== 1000) {
@@ -153,6 +216,12 @@ export default function ConversationScreen() {
     };
 
     return () => {
+      // Stop mic if active when navigating away
+      isMicActiveRef.current = false;
+      if (currentRecordingRef.current) {
+        currentRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+        currentRecordingRef.current = null;
+      }
       ws.close(1000, "Screen unmounted");
     };
   }, [verifiedSessionId, status === "connecting"]);
@@ -182,7 +251,7 @@ export default function ConversationScreen() {
         const sid = streamingIdRef.current;
         if (sid) {
           setMessages((prev) =>
-            prev.map((m) => (m.id === sid ? { ...m, text: m.text + delta } : m))
+            prev.map((m) => m.id === sid ? { ...m, text: m.text + delta } : m)
           );
         } else {
           const newId = genId();
@@ -194,6 +263,7 @@ export default function ConversationScreen() {
         }
         break;
       }
+
       case "response.done": {
         const sid = streamingIdRef.current;
         if (sid) {
@@ -215,22 +285,177 @@ export default function ConversationScreen() {
         setIsSending(false);
         break;
       }
+
+      // Phase 1: PCM16 audio output not yet implemented — Leo responds via text + expo-speech.
+      // Phase 2 will buffer these and play Leo's raw voice using expo-av.
+      case "response.audio.delta":
+      case "response.audio.done":
+        break;
+
+      // VAD events — useful for future UI feedback (e.g. "Leo is listening" indicator)
+      case "input_audio_buffer.speech_started":
+      case "input_audio_buffer.speech_stopped":
+      case "input_audio_buffer.committed":
+        break;
+
       case "error":
         setStatus("error");
+        break;
+
+      default:
         break;
     }
   }, [settings.verbalResponses]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-  function addLeoMessage(text: string, isVision = false) {
+  function addLeoMessage(text: string, isVision = false, isVoice = false) {
     setMessages((prev) => [
       ...prev,
-      { id: genId(), role: "leo", text, isStreaming: false, timestamp: new Date(), isVision },
+      {
+        id: genId(),
+        role: "leo",
+        text,
+        isStreaming: false,
+        timestamp: new Date(),
+        isVision,
+        isVoice,
+      },
     ]);
     if (settings.verbalResponses && !isVision) {
       Speech.speak(text, { language: "en", rate: 0.92, pitch: 1.05 });
     }
   }
+
+  // ── PCM16 mic streaming ──────────────────────────────────────────────────
+  //
+  // Records in 500ms chunks (matching optimal mobile latency vs. overhead tradeoff).
+  // Each chunk: expo-av → WAV file → read as base64 → strip 44-byte header
+  //             → raw PCM16 bytes → re-encode base64 → input_audio_buffer.append
+  //
+  // xAI server_vad handles turn detection — no manual commit needed.
+  // Loop continues until isMicActiveRef is set false.
+
+  const runRecordingLoop = useCallback(async () => {
+    if (!isMicActiveRef.current) return;
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+
+    const recording = new Audio.Recording();
+    currentRecordingRef.current = recording;
+
+    try {
+      await recording.prepareToRecordAsync(MIC_RECORDING_OPTIONS);
+      await recording.startAsync();
+
+      // Record 500ms chunk
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+      // If mic was stopped during recording, clean up and exit
+      if (!isMicActiveRef.current) {
+        try { await recording.stopAndUnloadAsync(); } catch {}
+        currentRecordingRef.current = null;
+        return;
+      }
+
+      await recording.stopAndUnloadAsync();
+      currentRecordingRef.current = null;
+
+      const uri = recording.getURI();
+      if (uri && wsRef.current?.readyState === WebSocket.OPEN) {
+        // Read WAV file as base64
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        // Decode → skip WAV header → extract raw PCM16 → re-encode
+        const binary = atob(base64);
+        if (binary.length > WAV_HEADER_BYTES) {
+          const pcmBinary = binary.slice(WAV_HEADER_BYTES);
+          const pcm16Base64 = btoa(pcmBinary);
+
+          wsRef.current.send(JSON.stringify({
+            type: "input_audio_buffer.append",
+            audio: pcm16Base64,
+          }));
+        }
+
+        // Clean up temp file (fire-and-forget)
+        FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+      }
+    } catch {
+      // Recording error — stop loop gracefully
+      currentRecordingRef.current = null;
+      isMicActiveRef.current = false;
+      setIsMicActive(false);
+      return;
+    }
+
+    // Continue loop
+    if (isMicActiveRef.current) {
+      runRecordingLoop();
+    }
+  }, []);
+
+  const startMic = async () => {
+    if (status !== "connected") return;
+
+    // expo-av PCM16 recording is iOS-only for now
+    // Android MediaRecorder cannot output raw PCM16 without native transcoding
+    if (Platform.OS === "android") {
+      Alert.alert(
+        "Android Voice Coming Soon",
+        "Live voice input is currently iOS only. Type your message below, or tap 📷 to share your view.",
+      );
+      return;
+    }
+
+    const { status: permStatus } = await Audio.requestPermissionsAsync();
+    if (permStatus !== "granted") {
+      Alert.alert(
+        "Microphone Access Needed",
+        "Enable microphone access in Settings to speak with Leo.",
+      );
+      return;
+    }
+
+    // iOS audio mode: recording requires allowsRecordingIOS
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+    });
+
+    Speech.stop(); // stop any current expo-speech before mic goes live
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    isMicActiveRef.current = true;
+    setIsMicActive(true);
+    runRecordingLoop();
+  };
+
+  const stopMic = async () => {
+    isMicActiveRef.current = false;
+    setIsMicActive(false);
+
+    if (currentRecordingRef.current) {
+      try { await currentRecordingRef.current.stopAndUnloadAsync(); } catch {}
+      currentRecordingRef.current = null;
+    }
+
+    // Restore normal audio mode for playback
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+    }).catch(() => {});
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const toggleMic = () => {
+    if (isMicActive) {
+      stopMic();
+    } else {
+      startMic();
+    }
+  };
 
   // ── Send text message ────────────────────────────────────────────────────
   const sendMessage = () => {
@@ -247,16 +472,14 @@ export default function ConversationScreen() {
       { id: genId(), role: "user", text, isStreaming: false, timestamp: new Date() },
     ]);
 
-    wsRef.current.send(
-      JSON.stringify({
-        type: "conversation.item.create",
-        item: {
-          type: "message",
-          role: "user",
-          content: [{ type: "input_text", text }],
-        },
-      })
-    );
+    wsRef.current.send(JSON.stringify({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text }],
+      },
+    }));
     wsRef.current.send(JSON.stringify({ type: "response.create" }));
   };
 
@@ -284,7 +507,14 @@ export default function ConversationScreen() {
 
     setMessages((prev) => [
       ...prev,
-      { id: genId(), role: "user", text: "📷 Camera snapshot sent", isStreaming: false, timestamp: new Date(), isVision: true },
+      {
+        id: genId(),
+        role: "user",
+        text: "📷 Camera snapshot sent",
+        isStreaming: false,
+        timestamp: new Date(),
+        isVision: true,
+      },
     ]);
 
     try {
@@ -319,6 +549,12 @@ export default function ConversationScreen() {
         style: "destructive",
         onPress: () => {
           Speech.stop();
+          // Stop mic before closing WS
+          isMicActiveRef.current = false;
+          if (currentRecordingRef.current) {
+            currentRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+            currentRecordingRef.current = null;
+          }
           wsRef.current?.close(1000, "User ended session");
           setStatus("ended");
           router.back();
@@ -336,7 +572,7 @@ export default function ConversationScreen() {
   const statusLabel =
     status === "verifying" ? "Verifying..."
       : status === "connecting" ? "Connecting..."
-        : status === "connected" ? "Live"
+        : status === "connected" ? (isMicActive ? "Listening..." : "Live")
           : status === "error" ? "Connection Error"
             : status === "ended" ? "Session Ended"
               : "Idle";
@@ -356,8 +592,16 @@ export default function ConversationScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Leo</Text>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
+            <View style={[
+              styles.statusDot,
+              { backgroundColor: isMicActive ? "#82c4b0" : statusColor },
+            ]} />
+            <Text style={[
+              styles.statusLabel,
+              { color: isMicActive ? "#82c4b0" : statusColor },
+            ]}>
+              {statusLabel}
+            </Text>
             {timeRemaining !== null && timeRemaining > 0 && (
               <Text style={styles.timerText}>
                 {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, "0")}
@@ -407,65 +651,103 @@ export default function ConversationScreen() {
               styles.inputBar,
               {
                 backgroundColor: "#172538",
-                borderTopColor: "#1e3a52",
+                borderTopColor: isMicActive ? "#82c4b040" : "#1e3a52",
                 paddingBottom: bottomPad + 8,
               },
             ]}
           >
-            <Pressable
-              onPress={sendVisionSnapshot}
-              style={({ pressed }) => [
-                styles.iconButton,
-                { backgroundColor: pressed ? "#1e3a52" : "#1c2e44" },
-              ]}
-              testID="camera-button"
-            >
-              <Ionicons
-                name={hasUsedCamera ? "camera" : "camera-outline"}
-                size={22}
-                color={hasUsedCamera ? "#82c4b0" : "#7b96ab"}
-              />
-            </Pressable>
+            {/* Listening strip — shown when mic is active */}
+            {isMicActive && (
+              <View style={styles.listeningStrip}>
+                <View style={[styles.listenDot, { backgroundColor: "#82c4b0" }]} />
+                <Text style={[styles.listeningText, { color: "#82c4b0" }]}>
+                  Leo is listening — speak naturally
+                </Text>
+              </View>
+            )}
 
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder="Say something to Leo..."
-              placeholderTextColor="#7b96ab"
-              value={inputText}
-              onChangeText={setInputText}
-              onSubmitEditing={sendMessage}
-              returnKeyType="send"
-              multiline={false}
-              editable={status === "connected"}
-              testID="message-input"
-            />
-
-            <Pressable
-              onPress={sendMessage}
-              disabled={!inputText.trim() || isSending || status !== "connected"}
-              style={({ pressed }) => [
-                styles.sendButton,
-                {
-                  backgroundColor:
-                    inputText.trim() && status === "connected"
-                      ? "#82c4b0"
-                      : "#1c2e44",
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
-              testID="send-button"
-            >
-              {isSending ? (
-                <ActivityIndicator size="small" color="#0a141f" />
-              ) : (
-                <Feather
-                  name="arrow-up"
-                  size={18}
-                  color={inputText.trim() && status === "connected" ? "#0a141f" : "#7b96ab"}
+            <View style={styles.inputRow}>
+              {/* Camera button */}
+              <Pressable
+                onPress={sendVisionSnapshot}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  { backgroundColor: pressed ? "#1e3a52" : "#1c2e44" },
+                ]}
+                testID="camera-button"
+              >
+                <Ionicons
+                  name={hasUsedCamera ? "camera" : "camera-outline"}
+                  size={22}
+                  color={hasUsedCamera ? "#82c4b0" : "#7b96ab"}
                 />
-              )}
-            </Pressable>
+              </Pressable>
+
+              {/* Mic button */}
+              <Pressable
+                onPress={toggleMic}
+                disabled={status !== "connected"}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  {
+                    backgroundColor: isMicActive
+                      ? "#82c4b025"
+                      : pressed ? "#1e3a52" : "#1c2e44",
+                    borderWidth: isMicActive ? 1 : 0,
+                    borderColor: isMicActive ? "#82c4b060" : "transparent",
+                  },
+                ]}
+                testID="mic-button"
+              >
+                <Ionicons
+                  name={isMicActive ? "mic" : "mic-outline"}
+                  size={22}
+                  color={isMicActive ? "#82c4b0" : "#7b96ab"}
+                />
+              </Pressable>
+
+              {/* Text input */}
+              <TextInput
+                ref={inputRef}
+                style={styles.input}
+                placeholder={isMicActive ? "Or type here too..." : "Say something to Leo..."}
+                placeholderTextColor="#7b96ab"
+                value={inputText}
+                onChangeText={setInputText}
+                onSubmitEditing={sendMessage}
+                returnKeyType="send"
+                multiline={false}
+                editable={status === "connected"}
+                testID="message-input"
+              />
+
+              {/* Send button */}
+              <Pressable
+                onPress={sendMessage}
+                disabled={!inputText.trim() || isSending || status !== "connected"}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  {
+                    backgroundColor:
+                      inputText.trim() && status === "connected"
+                        ? "#82c4b0"
+                        : "#1c2e44",
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+                testID="send-button"
+              >
+                {isSending ? (
+                  <ActivityIndicator size="small" color="#0a141f" />
+                ) : (
+                  <Feather
+                    name="arrow-up"
+                    size={18}
+                    color={inputText.trim() && status === "connected" ? "#0a141f" : "#7b96ab"}
+                  />
+                )}
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -481,6 +763,8 @@ export default function ConversationScreen() {
     </View>
   );
 }
+
+// ── Message bubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isLeo = message.role === "leo";
@@ -515,6 +799,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     </View>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -610,13 +896,34 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
   },
+  // ── Input bar ──────────────────────────────────────────────────────────
   inputBar: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  listeningStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 2,
+  },
+  listenDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  listeningText: {
+    fontFamily: "Raleway_400Regular",
+    fontSize: 11,
+    letterSpacing: 0.3,
+  },
+  inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
     paddingHorizontal: 12,
     paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
   },
   iconButton: {
     width: 42,
@@ -645,6 +952,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
+  // ── Session ended bar ──────────────────────────────────────────────────
   sessionEndedBar: {
     alignItems: "center",
     paddingTop: 16,
