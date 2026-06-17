@@ -28,3 +28,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+BRIDGE_API_KEY = "bridge_ffeb0d255c586c5dd0be421fd4813f38253c2de106291bc9"
