@@ -1,0 +1,3 @@
+- [Bridge session endpoint](bridge-session-endpoint.md) — POST /api/bridge/session bypasses Stripe; only active when BRIDGE_API_KEY env var is set; returns sessionId + wsUrl + visionUrl.
+- [Screen share vision](screen-share-vision.md) — getDisplayMedia() → hidden video element → canvas capture → /api/grok-vision; same interval as camera (3s); NotAllowedError on dismiss is silently ignored.
+- [storage.createSession signature](storage-create-session.md) — requires id: crypto.randomUUID() explicitly; caller must generate the UUID, it is not auto-generated.
