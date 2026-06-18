@@ -78,6 +78,18 @@ export function HomeTab({ onGoToPackages }: HomeTabProps) {
           ))}
         </div>
       </section>
+
+      {/* Footer */}
+      <footer className="px-6 py-8 mt-2 border-t border-primary/10">
+        <div className="max-w-lg mx-auto flex flex-col items-center gap-3">
+          <div className="flex gap-6 text-xs text-muted-foreground/40">
+            <a href="/privacy" className="hover:text-primary/60 transition-colors">Privacy Policy</a>
+            <a href="/terms" className="hover:text-primary/60 transition-colors">Terms of Service</a>
+            <a href="https://livhappierapps.com" target="_blank" rel="noopener noreferrer" className="hover:text-primary/60 transition-colors">Liv Happier Apps</a>
+          </div>
+          <p className="text-xs text-muted-foreground/20">© 2026 Liv Happier Apps. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   );
 }
