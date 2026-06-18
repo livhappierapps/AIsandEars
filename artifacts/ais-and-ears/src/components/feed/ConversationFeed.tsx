@@ -2,7 +2,10 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Square, Mic, MicOff, Eye, Camera, Activity, ShieldAlert, RefreshCcw, Radio } from "lucide-react";
+import {
+  Square, Mic, MicOff, Eye, EyeOff, Camera, CameraOff,
+  Monitor, MonitorOff, Activity, ShieldAlert, RefreshCcw, Radio,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatTime } from "@/lib/utils";
 import { useSettings } from "@/context/SettingsContext";
@@ -33,6 +36,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
+  const screenVideoRef = useRef<HTMLVideoElement>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement>(null);
   const audioCanvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -40,10 +44,12 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const playbackQueueRef = useRef<AudioBuffer[]>([]);
   const isPlayingRef = useRef(false);
   const currentTextRef = useRef("");
   const visionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const screenIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
   const autoVisionStartedRef = useRef(false);
@@ -52,7 +58,9 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   const [messages, setMessages] = useState<Message[]>([]);
   const [status, setStatus] = useState<"idle" | "connecting" | "connected" | "error">("idle");
   const [micActive, setMicActive] = useState(false);
-  const [visionActive, setVisionActive] = useState(false);
+  const [micMuted, setMicMuted] = useState(false);
+  const [cameraVisionActive, setCameraVisionActive] = useState(false);
+  const [screenActive, setScreenActive] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [leoSpeaking, setLeoSpeaking] = useState(false);
@@ -93,22 +101,20 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     src.connect(analyser);
     const data = new Uint8Array(analyser.frequencyBinCount);
     const canvas = audioCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
     const draw = () => {
       animFrameRef.current = requestAnimationFrame(draw);
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
       analyser.getByteFrequencyData(data);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const barW = canvas.width / data.length * 2.5;
+      const barW = (canvas.width / data.length) * 2.5;
       let x = 0;
       for (let i = 0; i < data.length; i++) {
         const h = (data[i] / 255) * canvas.height;
-        const alpha = 0.4 + (data[i] / 255) * 0.6;
-        ctx.fillStyle = `hsla(162, 36%, 64%, ${alpha})`;
-        ctx.fillRect(x, canvas.height - h, barW - 1, h);
-        x += barW;
+        ctx.fillStyle = `rgba(130,196,176,${0.4 + (data[i] / 255) * 0.6})`;
+        ctx.fillRect(x, canvas.height - h, barW, h);
+        x += barW + 1;
       }
     };
     draw();
@@ -116,87 +122,68 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   }, [micActive]);
 
   // Play PCM16 audio from Leo — skipped if verbal responses are off
-  const playAudioChunk = useCallback((base64: string) => {
-    if (!settings.verbalResponses) return;
+  const playAudioChunk = useCallback((b64: string) => {
     const ctx = audioCtxRef.current;
     if (!ctx) return;
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const raw = atob(b64);
+    const bytes = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     const int16 = new Int16Array(bytes.buffer);
     const float32 = new Float32Array(int16.length);
     for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 32768;
+    const buf = ctx.createBuffer(1, float32.length, 24000);
+    buf.copyToChannel(float32, 0);
+    playbackQueueRef.current.push(buf);
+    if (!isPlayingRef.current) playNext();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const buffer = ctx.createBuffer(1, float32.length, 24000);
-    buffer.copyToChannel(float32, 0);
-    playbackQueueRef.current.push(buffer);
-
-    if (!isPlayingRef.current) drainPlaybackQueue();
-  }, [settings.verbalResponses]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const drainPlaybackQueue = useCallback(() => {
+  const playNext = useCallback(() => {
     const ctx = audioCtxRef.current;
-    if (!ctx || playbackQueueRef.current.length === 0) {
-      isPlayingRef.current = false;
-      setLeoSpeaking(false);
-      return;
-    }
+    if (!ctx) return;
+    const buf = playbackQueueRef.current.shift();
+    if (!buf) { isPlayingRef.current = false; return; }
     isPlayingRef.current = true;
-    setLeoSpeaking(true);
-    const buf = playbackQueueRef.current.shift()!;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.connect(ctx.destination);
-    src.onended = drainPlaybackQueue;
+    src.onended = playNext;
     src.start();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Handle messages from xAI
-  const handleXaiMessage = useCallback((raw: string) => {
-    let evt: any;
-    try { evt = JSON.parse(raw); } catch { return; }
+  const handleXaiMessage = useCallback((data: string) => {
+    let msg: any;
+    try { msg = JSON.parse(data); } catch { return; }
 
-    switch (evt.type) {
-      case "connected":
+    switch (msg.type) {
+      case "session.created":
+      case "session.updated":
         setStatus("connected");
-        addMessage("system", "Leo is connected and listening...");
+        addMessage("system", "Connected — say hello to Leo.");
         break;
-
-      case "response.text.delta":
-        currentTextRef.current += evt.delta ?? "";
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "leo" && last.id === "streaming") {
-            return [...prev.slice(0, -1), { ...last, text: currentTextRef.current }];
-          }
-          return [...prev, { id: "streaming", role: "leo", text: currentTextRef.current, timestamp: new Date() }];
-        });
-        break;
-
-      case "response.text.done":
-        currentTextRef.current = "";
-        setMessages((prev) =>
-          prev.map((m) => m.id === "streaming" ? { ...m, id: Date.now().toString() } : m)
-        );
-        break;
-
       case "response.audio.delta":
-        if (evt.delta) playAudioChunk(evt.delta);
+        if (msg.delta) playAudioChunk(msg.delta);
+        setLeoSpeaking(true);
         break;
-
       case "response.audio.done":
-        break;
-
-      case "response.done":
         setLeoSpeaking(false);
         break;
-
-      case "error":
-        addMessage("system", `Error: ${evt.message ?? evt.error?.message ?? "Unknown error"}`);
-        setStatus("error");
+      case "response.text.delta":
+        currentTextRef.current += msg.delta ?? "";
         break;
-
-      default:
+      case "response.text.done":
+        if (currentTextRef.current.trim()) {
+          addMessage("leo", currentTextRef.current.trim());
+        }
+        currentTextRef.current = "";
+        break;
+      case "response.audio_transcript.done":
+        if (msg.transcript?.trim()) addMessage("leo", msg.transcript.trim());
+        break;
+      case "input_audio_buffer.speech_started":
+        addMessage("user", "(speaking...)");
+        break;
+      case "error":
+        addMessage("system", `Leo error: ${msg.error?.message ?? "unknown"}`);
         break;
     }
   }, [addMessage, playAudioChunk]);
@@ -211,7 +198,6 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       audioCtxRef.current = ctx;
 
       if (useMic || useCam) {
-        // Only call getUserMedia when at least one media type is requested
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: useMic
             ? { sampleRate: 24000, channelCount: 1, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
@@ -235,12 +221,11 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
           workletNode.connect(ctx.destination);
           workletNodeRef.current = workletNode;
           setMicActive(true);
+          setMicMuted(false);
           addMessage("system", "Microphone active. Connecting to Leo...");
         }
       }
 
-      // Open WebSocket — include BYOK key if the user set one in Settings.
-      // The server uses it instead of its own key; payment still validates the session.
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const userKey = settings.xaiApiKey?.trim();
       const wsUrl = `${proto}//${window.location.host}/api/grok-live?sessionId=${sessionId}${userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""}`;
@@ -270,7 +255,6 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         setMicActive(false);
       };
 
-      // Stream mic audio via AudioWorklet
       if (workletNodeRef.current) {
         workletNodeRef.current.port.onmessage = (e: MessageEvent) => {
           if (ws.readyState !== WebSocket.OPEN) return;
@@ -288,9 +272,19 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       setStatus("error");
       addMessage("system", `Setup failed: ${err.message}`);
     }
-  }, [sessionId, useCam, useMic, addMessage, handleXaiMessage]);
+  }, [sessionId, useCam, useMic, addMessage, handleXaiMessage, settings.xaiApiKey]);
 
-  // Capture & send camera frame to Leo (via REST vision endpoint)
+  // ── Mic mute/unmute ────────────────────────────────────────────────────────
+  const toggleMic = useCallback(() => {
+    const stream = micStreamRef.current;
+    if (!stream) return;
+    const nowMuted = !micMuted;
+    stream.getAudioTracks().forEach((t) => { t.enabled = !nowMuted; });
+    setMicMuted(nowMuted);
+    addMessage("system", nowMuted ? "Microphone muted — Leo can no longer hear you." : "Microphone live — Leo can hear you again.");
+  }, [micMuted, addMessage]);
+
+  // ── Camera vision ──────────────────────────────────────────────────────────
   const shareCamera = useCallback(async () => {
     const video = videoRef.current;
     const canvas = captureCanvasRef.current;
@@ -303,7 +297,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     ctx.drawImage(video, 0, 0, 640, 360);
     const imageData = canvas.toDataURL("image/jpeg", 0.75);
 
-    addMessage("user", "📷 Sharing camera view with Leo...", true);
+    addMessage("user", "📷 Camera frame sent to Leo...", true);
 
     try {
       const userKey = settings.xaiApiKey?.trim();
@@ -327,24 +321,109 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     } catch (err: any) {
       addMessage("system", `Vision error: ${err.message}`);
     }
-  }, [sessionId, addMessage]);
+  }, [sessionId, addMessage, settings.xaiApiKey]);
 
-  // Toggle auto-vision interval
-  const toggleVision = useCallback(() => {
-    if (visionActive) {
+  const toggleCameraVision = useCallback(() => {
+    if (cameraVisionActive) {
       clearInterval(visionIntervalRef.current!);
       visionIntervalRef.current = null;
-      setVisionActive(false);
-      addMessage("system", "Auto-vision paused.");
+      setCameraVisionActive(false);
+      addMessage("system", "Camera vision paused — Leo can no longer see you.");
     } else {
-      setVisionActive(true);
-      addMessage("system", "Auto-vision active — Leo sees a new frame every 3 seconds.");
+      setCameraVisionActive(true);
+      addMessage("system", "Camera vision active — Leo sees a new frame every 3 seconds.");
       shareCamera();
       visionIntervalRef.current = setInterval(shareCamera, VISION_INTERVAL_MS);
     }
-  }, [visionActive, shareCamera, addMessage]);
+  }, [cameraVisionActive, shareCamera, addMessage]);
 
-  // Auto-start vision once connected if the user has auto-vision enabled in Settings
+  // ── Screen share vision ────────────────────────────────────────────────────
+  const shareScreen = useCallback(async () => {
+    const video = screenVideoRef.current;
+    const canvas = captureCanvasRef.current;
+    if (!video || !canvas || !video.srcObject) return;
+
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, 1280, 720);
+    const imageData = canvas.toDataURL("image/jpeg", 0.7);
+
+    addMessage("user", "🖥 Screen frame sent to Leo...", true);
+
+    try {
+      const userKey = settings.xaiApiKey?.trim();
+      const res = await fetch("/api/grok-vision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          imageData,
+          prompt: "This is a screenshot of the user's screen. What do you see?",
+          isFirstFrame: false,
+          ...(userKey ? { userKey } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        addMessage("leo", data.message);
+      } else {
+        addMessage("system", `Screen vision error: ${data.error}`);
+      }
+    } catch (err: any) {
+      addMessage("system", `Screen vision error: ${err.message}`);
+    }
+  }, [sessionId, addMessage, settings.xaiApiKey]);
+
+  const stopScreenShare = useCallback(() => {
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    if (screenVideoRef.current) screenVideoRef.current.srcObject = null;
+    clearInterval(screenIntervalRef.current!);
+    screenIntervalRef.current = null;
+    setScreenActive(false);
+  }, []);
+
+  const toggleScreen = useCallback(async () => {
+    if (screenActive) {
+      stopScreenShare();
+      addMessage("system", "Screen sharing stopped.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: 1920, height: 1080 },
+      });
+      screenStreamRef.current = stream;
+
+      if (screenVideoRef.current) {
+        screenVideoRef.current.srcObject = stream;
+        await screenVideoRef.current.play().catch(() => {});
+      }
+
+      // Handle user stopping screen share via browser's native UI
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        setScreenActive(false);
+        clearInterval(screenIntervalRef.current!);
+        screenIntervalRef.current = null;
+        addMessage("system", "Screen sharing ended.");
+      });
+
+      setScreenActive(true);
+      addMessage("system", "Screen sharing active — Leo sees your screen every 3 seconds.");
+      shareScreen();
+      screenIntervalRef.current = setInterval(shareScreen, VISION_INTERVAL_MS);
+    } catch (err: any) {
+      // NotAllowedError = user dismissed the picker — not an error worth surfacing
+      if (err.name !== "NotAllowedError") {
+        addMessage("system", `Screen share error: ${err.message}`);
+      }
+    }
+  }, [screenActive, shareScreen, stopScreenShare, addMessage]);
+
+  // Auto-start camera vision once connected if the user has auto-vision enabled
   useEffect(() => {
     if (
       status === "connected" &&
@@ -353,24 +432,28 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       !autoVisionStartedRef.current
     ) {
       autoVisionStartedRef.current = true;
-      toggleVision();
+      toggleCameraVision();
     }
   }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEnd = useCallback(() => {
-    visionIntervalRef.current && clearInterval(visionIntervalRef.current);
+    clearInterval(visionIntervalRef.current!);
+    clearInterval(screenIntervalRef.current!);
+    stopScreenShare();
     wsRef.current?.close(1000, "Session ended");
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioCtxRef.current?.close();
     onClose();
-  }, [onClose]);
+  }, [onClose, stopScreenShare]);
 
-  // Keep ref in sync so the timer always calls the latest version
   useEffect(() => { handleEndRef.current = handleEnd; }, [handleEnd]);
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="w-full max-w-6xl mx-auto px-4 py-6">
+      {/* Hidden canvases and screen video — never shown to user */}
       <canvas ref={captureCanvasRef} className="hidden" />
+      <video ref={screenVideoRef} muted playsInline className="hidden" />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 gap-3">
@@ -405,9 +488,10 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
-        {/* Left: Camera + controls */}
+        {/* Left: Camera preview + controls */}
         <div className="flex flex-col gap-4">
-          {/* Camera preview */}
+
+          {/* Camera / media preview */}
           <div className="relative aspect-video rounded-xl overflow-hidden glass-panel border border-primary/20 bg-background">
             {mediaError ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
@@ -426,42 +510,119 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
               </div>
             )}
 
-            {/* Camera overlay */}
+            {/* Status badges — top-left */}
             {isFull && status === "connected" && (
-              <div className="absolute top-2 left-2">
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/70 backdrop-blur text-xs border border-primary/30">
-                  <div className={`w-1.5 h-1.5 rounded-full ${visionActive ? "bg-primary animate-pulse" : "bg-muted-foreground"}`} />
-                  <span className={visionActive ? "text-primary font-mono" : "text-muted-foreground font-mono"}>
-                    {visionActive ? "LEO WATCHING" : "CAM READY"}
-                  </span>
-                </div>
+              <div className="absolute top-2 left-2 flex flex-col gap-1">
+                {cameraVisionActive && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/70 backdrop-blur text-xs border border-primary/30">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                    <span className="text-primary font-mono">CAM ON</span>
+                  </div>
+                )}
+                {screenActive && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/70 backdrop-blur text-xs border border-accent/40">
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
+                    <span className="text-accent font-mono">SCREEN ON</span>
+                  </div>
+                )}
+                {!cameraVisionActive && !screenActive && (
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background/70 backdrop-blur text-xs border border-primary/20">
+                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                    <span className="text-muted-foreground font-mono">VISION OFF</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Audio bar */}
+          {/* Audio visualizer */}
           <div className="h-16 glass-panel rounded-xl border-primary/20 p-2 overflow-hidden relative">
             <span className="absolute top-1.5 left-2 text-xs text-primary/40 uppercase tracking-widest font-body">Audio</span>
             <canvas ref={audioCanvasRef} className="w-full h-full" width={400} height={60} />
           </div>
 
-          {/* Vision controls — only on full tier when connected */}
+          {/* Sense toggles — only when connected on full tier */}
           {isFull && status === "connected" && (
-            <div className="flex flex-col gap-2">
+            <div className="glass-panel rounded-xl border border-primary/20 p-3 flex flex-col gap-3">
+              <p className="text-xs text-primary/50 uppercase tracking-widest font-body text-center">Leo's Senses</p>
+
+              {/* Hearing toggle */}
               <Button
                 variant="outline"
-                className="w-full border-primary/30 text-primary hover:bg-primary/10 font-body"
-                onClick={shareCamera}
+                size="sm"
+                className={`w-full font-body text-sm ${
+                  micActive && !micMuted
+                    ? "border-primary/40 text-primary hover:bg-primary/10"
+                    : "border-muted/40 text-muted-foreground hover:bg-muted/10"
+                }`}
+                onClick={toggleMic}
+                disabled={!micActive}
               >
-                <Camera className="w-4 h-4 mr-2" /> Share This Moment
+                {micActive && !micMuted
+                  ? <Mic className="w-4 h-4 mr-2 text-primary" />
+                  : <MicOff className="w-4 h-4 mr-2" />
+                }
+                {!micActive ? "No mic" : micMuted ? "Hearing — Off" : "Hearing — On"}
               </Button>
+
+              {/* Camera vision toggle */}
               <Button
                 variant="outline"
-                className={`w-full font-body ${visionActive ? "border-destructive/40 text-destructive hover:bg-destructive/10" : "border-primary/30 text-primary/70 hover:bg-primary/10"}`}
-                onClick={toggleVision}
+                size="sm"
+                className={`w-full font-body text-sm ${
+                  cameraVisionActive
+                    ? "border-primary/40 text-primary hover:bg-primary/10"
+                    : "border-muted/40 text-muted-foreground hover:bg-muted/10"
+                }`}
+                onClick={toggleCameraVision}
               >
-                <Eye className="w-4 h-4 mr-2" />
-                {visionActive ? "Stop Auto-Vision" : "Start Auto-Vision"}
+                {cameraVisionActive
+                  ? <Camera className="w-4 h-4 mr-2 text-primary" />
+                  : <CameraOff className="w-4 h-4 mr-2" />
+                }
+                {cameraVisionActive ? "Camera — On" : "Camera — Off"}
+              </Button>
+
+              {/* Screen share toggle */}
+              <Button
+                variant="outline"
+                size="sm"
+                className={`w-full font-body text-sm ${
+                  screenActive
+                    ? "border-accent/40 text-accent hover:bg-accent/10"
+                    : "border-muted/40 text-muted-foreground hover:bg-muted/10"
+                }`}
+                onClick={toggleScreen}
+              >
+                {screenActive
+                  ? <Monitor className="w-4 h-4 mr-2 text-accent" />
+                  : <MonitorOff className="w-4 h-4 mr-2" />
+                }
+                {screenActive ? "Screen — On" : "Screen — Off"}
+              </Button>
+            </div>
+          )}
+
+          {/* Audio-only tier mic status */}
+          {!isFull && status === "connected" && (
+            <div className="glass-panel rounded-xl border border-primary/20 p-3 flex flex-col gap-2">
+              <p className="text-xs text-primary/50 uppercase tracking-widest font-body text-center">Leo's Senses</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className={`w-full font-body text-sm ${
+                  micActive && !micMuted
+                    ? "border-primary/40 text-primary hover:bg-primary/10"
+                    : "border-muted/40 text-muted-foreground hover:bg-muted/10"
+                }`}
+                onClick={toggleMic}
+                disabled={!micActive}
+              >
+                {micActive && !micMuted
+                  ? <Mic className="w-4 h-4 mr-2 text-primary" />
+                  : <MicOff className="w-4 h-4 mr-2" />
+                }
+                {!micActive ? "No mic" : micMuted ? "Hearing — Off" : "Hearing — On"}
               </Button>
             </div>
           )}
@@ -472,7 +633,9 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
           <div className="p-4 border-b border-primary/20 flex items-center justify-between">
             <div>
               <span className="font-body font-medium text-sm tracking-wide text-primary">Leo</span>
-              <p className="text-xs text-muted-foreground">Grok Vision + Audio</p>
+              <p className="text-xs text-muted-foreground">
+                {isFull ? "Voice · Camera · Screen" : "Voice"}
+              </p>
             </div>
             <div className={`w-2 h-2 rounded-full ${status === "connected" ? "bg-primary animate-pulse" : "bg-muted-foreground"}`} />
           </div>
@@ -533,13 +696,22 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
             ) : (
               <div className="flex items-center gap-3">
                 <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/10 border border-primary/20">
-                  {micActive
+                  {micActive && !micMuted
                     ? <Mic className="w-4 h-4 text-primary animate-pulse" />
                     : <MicOff className="w-4 h-4 text-muted-foreground" />
                   }
                   <span className="text-xs text-primary font-body">
-                    {micActive ? "Listening to you..." : "Audio-only mode"}
+                    {!micActive ? "Audio-only mode" : micMuted ? "Muted" : "Listening..."}
                   </span>
+                  {cameraVisionActive && (
+                    <Eye className="w-4 h-4 text-primary ml-auto" />
+                  )}
+                  {screenActive && (
+                    <Monitor className="w-4 h-4 text-accent ml-1" />
+                  )}
+                  {!cameraVisionActive && !screenActive && micActive && (
+                    <EyeOff className="w-4 h-4 text-muted-foreground/40 ml-auto" />
+                  )}
                 </div>
               </div>
             )}
