@@ -52,7 +52,7 @@ docs/
 - **expo-speech has NO config plugin** — never add it to the `plugins` array in `app.json`.
 - **Stripe key format**: `STRIPE_SECRET_KEY` must be `sk_test_51...` (Standard). The `mk_` prefix (Restricted key) causes 401 errors.
 - **TypeScript**: All packages fully clean (`pnpm run typecheck` — 0 errors across all 5 packages).
-- **Security audit last run**: June 18 2026 — all clean. Dependency audit: 0 vulns. HoundDog: 0. SAST: 43 findings all in `.agents/skills/` (Replit internal scripts, not our code).
+- **Security audit last run**: June 27 2026 — all clean. Dependency audit: 0 vulns (undici override added). HoundDog: 0. SAST: 48 findings all in dev/build tooling scripts (not shipped production code).
 - **Audio processing**: `noiseSuppression`, `echoCancellation`, and `autoGainControl` are all disabled in getUserMedia — Leo receives raw unfiltered audio including music, ambient sound, and instrument notes.
 - **Vision interval**: 3 seconds for both camera and screen share. Camera: `videoRef` → canvas → `/api/grok-vision`. Screen: `screenVideoRef` (hidden) → canvas → `/api/grok-vision`.
 - **Screen share**: `getDisplayMedia()` → hidden `<video ref={screenVideoRef}>`. `NotAllowedError` on dismiss is silently swallowed. Track `"ended"` event always fires when user stops via browser UI.
@@ -206,15 +206,24 @@ App Store submission requires Apple IAP decision (Boss). See Apple compliance se
 ### Vision — Future
 True high-frequency vision (sub-3s) requires xAI Realtime API image frame support over WebSocket (not yet available).
 
-## Security Audit — June 18 2026
+## Security Audit — June 27 2026
 
 | Scanner | Status |
 |---|---|
-| Dependency audit | ✅ 0 critical · 0 high · 0 moderate · 0 low |
-| SAST (our code) | ✅ 0 findings in app code — 43 in `.agents/skills/` (Replit internal, not shipped) |
+| Dependency audit | ✅ 0 vulnerabilities — `undici >=6.27.0` override added to fix 1 high + 1 moderate + 2 low CVEs in `@expo/cli>undici` |
+| SAST (app code) | ⚠️ 48 medium findings — ALL in `ais-and-ears-native/scripts/build.js` + `server/serve.js` + `server/templates/landing-page.html` (dev/build tooling only, never executed at runtime) + 1 in `mockup-sandbox/src/App.tsx` (internal design tool). Zero findings in API server or web app production code. |
 | HoundDog | ✅ 0 findings |
 | Integration tests | ✅ 15/15 `pnpm --filter @workspace/scripts run check` |
 | Full typecheck | ✅ All 5 packages clean — `pnpm run typecheck` exits 0 |
+
+### SAST False-Positive Detail
+
+| File | Findings | Verdict |
+|---|---|---|
+| `ais-and-ears-native/scripts/build.js` | 37 medium — fs/path-join with internal function args | ✅ False positive — internal EAS build script, no user input, never deployed |
+| `ais-and-ears-native/server/serve.js` | 8 medium — same + http-server warning | ✅ False positive — manual dev utility (`npm run serve`), no active workflow |
+| `ais-and-ears-native/server/templates/landing-page.html` | 2 medium — CDN script tag missing SRI | ⚠️ Low risk — dev-only QR code page, never user-facing in production |
+| `mockup-sandbox/src/App.tsx` | 1 medium — dynamic property access `mod[name]` | ✅ False positive — internal design canvas tool, name comes from filesystem keys |
 
 ## Known Issues & Fixed Bugs
 
