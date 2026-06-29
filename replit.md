@@ -200,8 +200,46 @@ A bundled app combining AIs&Ears + Memory Machine into one product sold in app s
 - Memory shape: `{ role, content, createdAt, threadId }`
 - **Blocker**: Clerk auth must land on AIs&Ears side before wiring.
 
-### AIs&Ears Mobile — Next Steps
-App Store submission requires Apple IAP decision (Boss). See Apple compliance section above.
+### AIs&Ears Mobile — Build & Release
+
+**EAS Build is configured.** Package IDs set (`com.livhappierapps.aisandears`). Profiles: `development`, `preview` (APK/IPA), `production` (AAB/IPA for stores).
+
+#### First-time setup (one-time, from Replit shell)
+```bash
+cd artifacts/ais-and-ears-native
+npx eas-cli@latest login          # login with expo.dev account
+npx eas-cli@latest build:configure  # links project to Expo account (adds projectId to app.json)
+```
+
+#### Get a Samsung APK (sideload for testing)
+```bash
+cd artifacts/ais-and-ears-native
+npx eas-cli@latest build --platform android --profile preview
+# ~15-25 min cloud build → download link → sideload to Samsung
+```
+
+#### Get a TestFlight IPA (iOS internal testing)
+```bash
+npx eas-cli@latest build --platform ios --profile preview
+# Requires Apple Dev account connected in EAS dashboard
+```
+
+#### Submit to Google Play (internal track first)
+```bash
+# First: download Google service account JSON from Play Console → save as google-service-account.json
+npx eas-cli@latest build --platform android --profile production
+npx eas-cli@latest submit --platform android --latest
+```
+
+#### Submit to App Store
+⚠️ Apple IAP decision required first — see Apple compliance section above.
+```bash
+# Fill in eas.json submit.production.ios fields (appleId, ascAppId, appleTeamId)
+npx eas-cli@latest build --platform ios --profile production
+npx eas-cli@latest submit --platform ios --latest
+```
+
+**App Store submission requires Apple IAP decision (Boss). See Apple compliance section above.**
 
 ### Vision — Future
 True high-frequency vision (sub-3s) requires xAI Realtime API image frame support over WebSocket (not yet available).
