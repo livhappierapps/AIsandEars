@@ -55,7 +55,7 @@ const PRODUCTS = [
     playIdentifier: "audio_session",
     displayName: "Audio Session",
     title: "30-min Audio Session",
-    type: "non_subscription" as const,
+    type: "one_time" as const,
     duration: undefined,
     prices: [{ amount_micros: 2990000, currency: "USD" }],
     entitlement: "audio",
@@ -65,7 +65,7 @@ const PRODUCTS = [
     playIdentifier: "full_session",
     displayName: "Full Session",
     title: "30-min Full Session (audio + vision)",
-    type: "non_subscription" as const,
+    type: "one_time" as const,
     duration: undefined,
     prices: [{ amount_micros: 4990000, currency: "USD" }],
     entitlement: "full",
@@ -99,28 +99,33 @@ async function seedRevenueCat() {
   const { data: apps, error: laErr } = await listApps({ client, path: { project_id: project.id }, query: { limit: 20 } });
   if (laErr || !apps) throw new Error("Failed to list apps");
 
-  let testApp = apps.items.find((a) => a.type === "test_store");
-  let iosApp = apps.items.find((a) => a.type === "app_store");
-  let androidApp = apps.items.find((a) => a.type === "play_store");
+  const testAppFound = apps.items.find((a) => a.type === "test_store");
+  const iosAppFound = apps.items.find((a) => a.type === "app_store");
+  const androidAppFound = apps.items.find((a) => a.type === "play_store");
 
-  if (!testApp) throw new Error("No test store app found in project");
+  if (!testAppFound) throw new Error("No test store app found in project");
+  const testApp: App = testAppFound;
   console.log("Test store app:", testApp.id);
 
-  if (!iosApp) {
+  let iosApp: App;
+  if (!iosAppFound) {
     const { data, error } = await createApp({ client, path: { project_id: project.id }, body: { name: "AIs&Ears iOS", type: "app_store", app_store: { bundle_id: APP_STORE_BUNDLE_ID } } });
-    if (error) throw new Error("Failed to create iOS app");
-    iosApp = data;
+    if (error || !data) throw new Error("Failed to create iOS app");
+    iosApp = data as App;
     console.log("Created iOS app:", iosApp.id);
   } else {
+    iosApp = iosAppFound as App;
     console.log("iOS app exists:", iosApp.id);
   }
 
-  if (!androidApp) {
+  let androidApp: App;
+  if (!androidAppFound) {
     const { data, error } = await createApp({ client, path: { project_id: project.id }, body: { name: "AIs&Ears Android", type: "play_store", play_store: { package_name: PLAY_STORE_PACKAGE_NAME } } });
-    if (error) throw new Error("Failed to create Android app");
-    androidApp = data;
+    if (error || !data) throw new Error("Failed to create Android app");
+    androidApp = data as App;
     console.log("Created Android app:", androidApp.id);
   } else {
+    androidApp = androidAppFound as App;
     console.log("Android app exists:", androidApp.id);
   }
 
@@ -147,7 +152,7 @@ async function seedRevenueCat() {
         body.subscription = { duration: pd.duration! };
         body.title = pd.title;
       }
-      if (isTest && pd.type === "non_subscription") {
+      if (isTest && pd.type === "one_time") {
         body.title = pd.title;
       }
       const { data: created, error } = await createProduct({ client, path: { project_id: project!.id }, body });

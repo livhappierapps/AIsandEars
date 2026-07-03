@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { useGetProducts, useCreateCheckout } from "@workspace/api-client-react";
+import { useGetProducts, useCreateCheckout, CheckoutRequestTier } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Check, Mic, Video, Loader2, AlertCircle } from "lucide-react";
@@ -23,7 +23,7 @@ export function PricingSection() {
   const handleCheckout = (priceId: string, tier: string) => {
     setSelectedPriceId(priceId);
     createCheckout.mutate(
-      { data: { priceId, tier } },
+      { data: { tier: tier as CheckoutRequestTier } },
       {
         onSuccess: (data) => {
           if ((data as any).error === "payment_unavailable") {
@@ -35,11 +35,11 @@ export function PricingSection() {
             });
             return;
           }
-          // Only allow redirects to stripe.com or our own origin
+          // Allow redirects to whop.com or our own origin
           const url = data.url;
           try {
             const parsed = new URL(url);
-            const allowed = parsed.hostname.endsWith("stripe.com") || parsed.origin === window.location.origin;
+            const allowed = parsed.hostname.endsWith("whop.com") || parsed.origin === window.location.origin;
             if (!allowed) throw new Error("Untrusted redirect");
           } catch {
             toast({ title: "Redirect blocked", description: "Unexpected checkout URL.", variant: "destructive" });

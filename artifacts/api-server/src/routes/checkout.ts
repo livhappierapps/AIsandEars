@@ -1,40 +1,38 @@
 import { Router, type IRouter } from "express";
-import { getUncachableStripeClient } from "../stripeClient";
+import { getWhopClient } from "../whopClient";
 import { storage } from "../storage";
 import crypto from "crypto";
 
 const router: IRouter = Router();
 
-// Accepted tier identifiers — must match Stripe product metadata
 const VALID_TIERS = new Set(["audio-monthly", "full-monthly", "audio-session", "full-session"]);
 
-// Payment links stored as env vars — set these from Stripe dashboard
-const PAYMENT_LINKS: Record<string, string | undefined> = {
-  "audio-monthly": process.env.STRIPE_LINK_AUDIO_MONTHLY,
-  "full-monthly": process.env.STRIPE_LINK_FULL_MONTHLY,
-  "audio-session": process.env.STRIPE_LINK_AUDIO_SESSION,
-  "full-session": process.env.STRIPE_LINK_FULL_SESSION,
+// Whop plan IDs — set via env vars after running seedWhop
+const WHOP_PLAN_IDS: Record<string, string | undefined> = {
+  "audio-monthly": process.env.WHOP_PLAN_AUDIO_MONTHLY,
+  "full-monthly": process.env.WHOP_PLAN_FULL_MONTHLY,
+  "audio-session": process.env.WHOP_PLAN_AUDIO_SESSION,
+  "full-session": process.env.WHOP_PLAN_FULL_SESSION,
 };
 
 function getBaseUrl() {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
-  // Port 80 is the shared Replit proxy — not the raw service port
   return domain ? `https://${domain}` : "http://localhost:80";
 }
 
-// Allowed schemes for custom success/cancel URLs passed by mobile clients
 const ALLOWED_CUSTOM_PREFIXES = ["ais-and-ears-native://"];
 
+// POST /api/checkout
+// Body: { tier, successUrl?, cancelUrl? }
 router.post("/checkout", async (req, res): Promise<void> => {
   const {
-    priceId,
     tier,
     successUrl: customSuccessUrl,
     cancelUrl: customCancelUrl,
   } = req.body;
 
-  if (!priceId || !tier) {
-    res.status(400).json({ error: "priceId and tier are required" });
+  if (!tier) {
+    res.status(400).json({ error: "tier is required" });
     return;
   }
   if (!VALID_TIERS.has(tier)) {
@@ -44,8 +42,17 @@ router.post("/checkout", async (req, res): Promise<void> => {
     return;
   }
 
-  // Validate custom URLs — must be our domain or a known app scheme
+  const planId = WHOP_PLAN_IDS[tier];
+  if (!planId) {
+    res.status(503).json({
+      error: "payment_unavailable",
+      message: "Whop plan not configured. Check WHOP_PLAN_* environment variables.",
+    });
+    return;
+  }
+
   const baseUrl = getBaseUrl();
+
   if (customSuccessUrl) {
     const isAllowed =
       customSuccessUrl.startsWith(baseUrl) ||
@@ -65,122 +72,80 @@ router.post("/checkout", async (req, res): Promise<void> => {
     }
   }
 
-  const successUrl =
-    customSuccessUrl ?? `${baseUrl}/?success=true&session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = customCancelUrl ?? `${baseUrl}/?cancelled=true`;
+  const redirectUrl = customSuccessUrl ?? `${baseUrl}/?success=true&tier=${encodeURIComponent(tier)}`;
 
-  // Option A: Try live Stripe API (requires valid sk_test_ key)
   try {
-    const stripe = await getUncachableStripeClient();
-    const isSession = tier.includes("session");
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: isSession ? "payment" : "subscription",
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      metadata: { tier },
+    const whop = await getWhopClient();
+    const result = await whop.checkoutConfigurations.create({
+      plan_id: planId,
+      redirect_url: redirectUrl,
     });
-    res.json({ url: session.url });
-    return;
-  } catch (stripeErr: any) {
-    req.log?.warn({ err: stripeErr.message }, "Stripe API unavailable — trying payment links");
-  }
 
-  // Option B: Fall back to pre-configured Stripe Payment Links
-  const link = PAYMENT_LINKS[tier];
-  if (link) {
-    const encodedSuccess = encodeURIComponent(successUrl);
-    const encodedCancel = encodeURIComponent(cancelUrl);
-    const fullLink = `${link}?success_url=${encodedSuccess}&cancel_url=${encodedCancel}`;
-    res.json({ url: fullLink, paymentLink: true });
-    return;
+    res.json({
+      url: result.purchase_url ?? `https://whop.com/checkout/${planId}`,
+      checkoutId: result.id,
+      tier,
+    });
+  } catch (err: any) {
+    req.log?.error({ err: err.message }, "Whop checkout error");
+    res.status(503).json({
+      error: "payment_unavailable",
+      message: err.message ?? "Failed to create Whop checkout",
+    });
   }
-
-  // Both options failed
-  res.status(503).json({
-    error: "payment_unavailable",
-    message:
-      "Stripe is not configured yet. Please add a valid STRIPE_SECRET_KEY in Replit Secrets.",
-  });
 });
 
+// GET /api/checkout/verify?membership_id=mem_xxx&tier=audio-monthly
+// Called after Whop redirects back with membership_id in query params.
+// Verifies with Whop that the membership is valid before creating a DB session.
 router.get("/checkout/verify", async (req, res): Promise<void> => {
-  const { session_id, tier } = req.query as { session_id?: string; tier?: string };
+  const { membership_id, tier } = req.query as { membership_id?: string; tier?: string };
 
-  // Standard Stripe checkout: session_id starts with "cs_"
-  if (session_id?.startsWith("cs_")) {
-    try {
-      const stripe = await getUncachableStripeClient();
-      const stripeSession = await stripe.checkout.sessions.retrieve(session_id);
-
-      if (stripeSession.payment_status !== "paid") {
-        res.status(400).json({ error: "Payment not completed" });
-        return;
-      }
-
-      const resolvedTier = (stripeSession.metadata?.tier ?? "audio-session") as string;
-      if (!VALID_TIERS.has(resolvedTier)) {
-        res.status(400).json({ error: "Unrecognized tier in Stripe session metadata" });
-        return;
-      }
-      const isTimedSession = resolvedTier.includes("session");
-
-      let existing = await storage.getSessionByStripeId(session_id);
-      if (!existing) {
-        existing = await storage.createSession({
-          id: crypto.randomUUID(),
-          stripeSessionId: session_id,
-          tier: resolvedTier,
-          expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
-          used: false,
-        });
-      }
-
-      res.json({
-        valid: true,
-        tier: existing.tier,
-        sessionId: existing.id,
-        expiresAt: existing.expiresAt?.toISOString() ?? null,
-      });
-      return;
-    } catch (err: any) {
-      req.log?.error({ err }, "Verify error");
-      res.status(400).json({ error: err.message ?? "Verification failed" });
-      return;
-    }
+  if (!membership_id || !tier) {
+    res.status(400).json({ error: "membership_id and tier are required" });
+    return;
   }
 
-  // Payment-link or link_ success — grant access by tier
-  if (session_id?.startsWith("link_") || tier) {
-    if (!tier) {
-      res.status(400).json({ error: "tier is required for payment link verification" });
-      return;
-    }
-    if (!VALID_TIERS.has(tier)) {
-      res.status(400).json({
-        error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}`,
-      });
-      return;
-    }
-    const isTimedSession = tier.includes("session");
-    const existing = await storage.createSession({
-      id: crypto.randomUUID(),
-      stripeSessionId: session_id ?? `link_${crypto.randomUUID()}`,
-      tier,
-      expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
-      used: false,
+  if (!VALID_TIERS.has(tier)) {
+    res.status(400).json({
+      error: `Invalid tier. Must be one of: ${[...VALID_TIERS].join(", ")}`,
     });
+    return;
+  }
+
+  try {
+    const whop = await getWhopClient();
+
+    // Verify the membership is valid (paid and not expired)
+    const membership = await whop.memberships.retrieve(membership_id);
+    if (!membership || membership.status !== "active") {
+      res.status(400).json({ error: "Membership is not active" });
+      return;
+    }
+
+    // Check we don't already have a session for this membership
+    let existing = await storage.getSessionByStripeId(membership_id);
+    if (!existing) {
+      const isTimedSession = tier.includes("session");
+      existing = await storage.createSession({
+        id: crypto.randomUUID(),
+        stripeSessionId: membership_id, // reusing stripeSessionId column for Whop membership ID
+        tier,
+        expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
+        used: false,
+      });
+    }
+
     res.json({
       valid: true,
       tier: existing.tier,
       sessionId: existing.id,
       expiresAt: existing.expiresAt?.toISOString() ?? null,
     });
-    return;
+  } catch (err: any) {
+    req.log?.error({ err: err.message }, "Whop verify error");
+    res.status(400).json({ error: err.message ?? "Verification failed" });
   }
-
-  res.status(400).json({ error: "session_id is required" });
 });
 
 export default router;

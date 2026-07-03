@@ -12,7 +12,7 @@ tags:
   - name: products
     description: Stripe product listing
   - name: checkout
-    description: Stripe checkout and session verification
+    description: Whop checkout and session verification
 
 paths:
   /healthz:
@@ -81,13 +81,13 @@ paths:
     get:
       operationId: verifyCheckout
       tags: [checkout]
-      summary: Verify checkout and grant a paid session
+      summary: Verify Whop membership and grant a paid session
       description: |
-        Two paths:
-        - `session_id` starts with `cs_` — verifies via Stripe API, creates DB session.
-        - `session_id` starts with `link_` or `tier` is provided — payment link success path, validates tier and creates DB session.
+        Verifies a Whop membership and creates a DB session.
+        - `membership_id` — Whop membership ID (mem_xxx), verified with Whop API.
+        - `tier` — required tier identifier.
       parameters:
-        - name: session_id
+        - name: membership_id
           in: query
           required: false
           schema:
@@ -179,13 +179,16 @@ components:
     CheckoutRequest:
       type: object
       properties:
-        priceId:
-          type: string
         tier:
           type: string
           enum: [audio-monthly, full-monthly, audio-session, full-session]
+        successUrl:
+          type: string
+          description: Optional redirect URL after successful payment (mobile deep links supported)
+        cancelUrl:
+          type: string
+          description: Optional redirect URL on payment cancellation
       required:
-        - priceId
         - tier
 
     CheckoutResponse:
@@ -193,9 +196,11 @@ components:
       properties:
         url:
           type: string
-        paymentLink:
-          type: boolean
-          description: true when returning a pre-configured Stripe Payment Link (fallback path)
+        checkoutId:
+          type: string
+          description: Whop checkout configuration ID
+        tier:
+          type: string
       required:
         - url
 

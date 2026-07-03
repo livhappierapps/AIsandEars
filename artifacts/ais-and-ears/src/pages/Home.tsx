@@ -24,29 +24,41 @@ export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [directSession, setDirectSession] = useState<DirectSession | null>(null);
 
-  // Handle Stripe success/cancel redirects
+  // Handle Whop success redirects — Whop returns ?success=true&tier=audio-monthly&membership_id=mem_xxx
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const sid = params.get("session_id");
     const success = params.get("success");
+    const membershipId = params.get("membership_id");
     const tier = params.get("tier");
     const cancelled = params.get("cancelled");
 
-    if (success === "true") {
-      if (sid && sid.startsWith("cs_")) {
-        setSessionId(sid);
-      } else if (tier) {
-        setSessionId(`link_${tier}`);
-      }
+    if (success === "true" && membershipId && tier) {
+      // Use membership_id as the session identifier for Whop verification
+      setSessionId(`whop_${membershipId}_${tier}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (success === "true" && tier) {
+      // Fallback: no membership_id in redirect — try tier-only path
+      setSessionId(`tier_${tier}`);
       window.history.replaceState({}, "", window.location.pathname);
     } else if (cancelled) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
-  const verifyParams = sessionId?.startsWith("link_")
-    ? { session_id: sessionId, tier: sessionId.replace("link_", "") }
-    : { session_id: sessionId || "" };
+  // Build verify params based on what Whop returned
+  const verifyParams = (() => {
+    if (!sessionId) return { membership_id: "", tier: "" };
+    if (sessionId.startsWith("whop_")) {
+      const parts = sessionId.replace("whop_", "").split("_");
+      const tier = parts.pop() ?? "";
+      const membershipId = parts.join("_");
+      return { membership_id: membershipId, tier };
+    }
+    if (sessionId.startsWith("tier_")) {
+      return { membership_id: "", tier: sessionId.replace("tier_", "") };
+    }
+    return { membership_id: sessionId, tier: "" };
+  })();
 
   const verifyQuery = useVerifyCheckout(verifyParams as any, {
     query: { queryKey: getVerifyCheckoutQueryKey(verifyParams as any), enabled: !!sessionId && !directSession, retry: false },

@@ -33,3 +33,8 @@ channel = "stable-25_05"
 
 [userenv.shared]
 BRIDGE_API_KEY = "bridge_ffeb0d255c586c5dd0be421fd4813f38253c2de106291bc9"
+WHOP_COMPANY_ID = "biz_uw76pWuZ4pOuTZ"
+WHOP_PLAN_AUDIO_MONTHLY = "plan_nOiAkCNkabcuI"
+WHOP_PLAN_FULL_MONTHLY = "plan_GpVrV4qfY7w1r"
+WHOP_PLAN_AUDIO_SESSION = "plan_sGuJXPFZipTzB"
+WHOP_PLAN_FULL_SESSION = "plan_T3sw3zyV777y2"

@@ -27,19 +27,18 @@ app.use(
   }),
 );
 
-// Stripe webhook must be registered BEFORE express.json() so it receives the raw Buffer
+// Whop webhook must be registered BEFORE express.json() so it receives the raw Buffer
 app.post(
-  "/api/stripe/webhook",
+  "/api/whop/webhook",
   express.raw({ type: "application/json" }),
   async (req, res): Promise<void> => {
-    const signature = req.headers["stripe-signature"];
+    const signature = req.headers["whop-signature"] as string | undefined;
     if (!signature) {
-      res.status(400).json({ error: "Missing stripe-signature" });
+      res.status(400).json({ error: "Missing whop-signature" });
       return;
     }
-    const sig = Array.isArray(signature) ? signature[0] : signature;
     try {
-      await WebhookHandlers.processWebhook(req.body as Buffer, sig);
+      await WebhookHandlers.processWhopWebhook(req.body as Buffer, signature);
       res.status(200).json({ received: true });
     } catch (err: any) {
       logger.error({ err }, "Webhook error");
@@ -56,11 +55,8 @@ const productionOrigins: string[] = process.env.REPLIT_DOMAINS
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Same-origin, curl, and native app requests have no origin header — always allow
       if (!origin) return callback(null, true);
-      // Dev environment (no REPLIT_DOMAINS) — allow everything
       if (productionOrigins.length === 0) return callback(null, true);
-      // Production — restrict to known domains
       if (productionOrigins.includes(origin)) return callback(null, true);
       callback(new Error(`CORS: origin '${origin}' not permitted`));
     },

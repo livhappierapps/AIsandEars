@@ -24,7 +24,6 @@ interface Tier {
   name: string;
   subtitle: string;
   price: string;
-  priceId: string;
   tier: string;
   features: string[];
   featured: boolean;
@@ -37,7 +36,6 @@ const TIERS: Tier[] = [
     name: "Full Uplink",
     subtitle: "Monthly",
     price: "$10.99",
-    priceId: "price_1TGDzUPnPNh4x29iqfTcK073",
     tier: "full-monthly",
     features: ["Unlimited audio + vision", "Leo sees & hears you", "24/7 access", "Cancel anytime"],
     featured: true,
@@ -48,7 +46,6 @@ const TIERS: Tier[] = [
     name: "Audio Uplink",
     subtitle: "Monthly",
     price: "$5.99",
-    priceId: "price_1TGDzTPnPNh4x29isbIS2PnE",
     tier: "audio-monthly",
     features: ["Unlimited audio", "Leo hears you", "24/7 access", "Cancel anytime"],
     featured: false,
@@ -59,7 +56,6 @@ const TIERS: Tier[] = [
     name: "Full Session",
     subtitle: "30 minutes",
     price: "$4.99",
-    priceId: "price_1TGDzVPnPNh4x29iJe6Cc0yo",
     tier: "full-session",
     features: ["30-min audio + vision", "Leo sees & hears you", "One-time payment"],
     featured: false,
@@ -70,7 +66,6 @@ const TIERS: Tier[] = [
     name: "Audio Session",
     subtitle: "30 minutes",
     price: "$2.99",
-    priceId: "price_1TGDzUPnPNh4x29i3mTtQ1RE",
     tier: "audio-session",
     features: ["30-min audio only", "Leo hears you", "One-time payment"],
     featured: false,
@@ -92,14 +87,18 @@ export default function PackagesTab() {
     setLoadingTier(tier.id);
 
     try {
+      // After Whop redirects back, deep link returns:
+      // ais-and-ears-native://conversation?membership_id=mem_xxx&tier=audio-monthly
+      const successUrl = `ais-and-ears-native://conversation?membership_id=MEMBERSHIP_ID&tier=${tier.tier}`;
+      const cancelUrl = "ais-and-ears-native://cancelled";
+
       const res = await fetch(`https://${DOMAIN}/api/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          priceId: tier.priceId,
           tier: tier.tier,
-          successUrl: `ais-and-ears-native://conversation?session_id={CHECKOUT_SESSION_ID}&tier=${tier.tier}`,
-          cancelUrl: "ais-and-ears-native://cancelled",
+          successUrl,
+          cancelUrl,
         }),
       });
 

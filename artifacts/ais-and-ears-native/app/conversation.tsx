@@ -122,19 +122,21 @@ export default function ConversationScreen() {
     const rawSessionId = params.session_id;
     if (!rawSessionId) { setStatus("error"); return; }
 
-    if (rawSessionId.startsWith("cs_") || rawSessionId.startsWith("pi_")) {
-      verifyStripeSession(rawSessionId, params.tier);
+    // Whop membership IDs start with "mem_"
+    if (rawSessionId.startsWith("mem_")) {
+      verifyWhopSession(rawSessionId, params.tier);
     } else {
+      // Already a verified session UUID — go straight to connecting
       setVerifiedSessionId(rawSessionId);
       setTier(params.tier ?? null);
       setStatus("connecting");
     }
   }, []);
 
-  async function verifyStripeSession(stripeSessionId: string, tierParam?: string) {
+  async function verifyWhopSession(membershipId: string, tierParam?: string) {
     setStatus("verifying");
     try {
-      const query = new URLSearchParams({ session_id: stripeSessionId });
+      const query = new URLSearchParams({ membership_id: membershipId });
       if (tierParam) query.set("tier", tierParam);
       const res = await fetch(`https://${DOMAIN}/api/checkout/verify?${query.toString()}`);
       const data = await res.json() as {

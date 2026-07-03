@@ -1,19 +1,18 @@
 import { Router, type IRouter } from "express";
-import { storage } from "../storage";
-import { getUncachableStripeClient } from "../stripeClient";
+import { getWhopClient } from "../whopClient";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
-// Hardcoded fallback products — matches what was created in Stripe
+// Hardcoded fallback — Whop plan IDs + canonical tier metadata
 const FALLBACK_PRODUCTS = [
   {
-    id: "prod-audio-monthly",
+    id: process.env.WHOP_PLAN_AUDIO_MONTHLY ?? "plan_nOiAkCNkabcuI",
     name: "Audio Monthly",
     description: "Unlimited audio sessions — Leo hears you 24/7",
     prices: [
       {
-        id: "price_1TGDzTPnPNh4x29isbIS2PnE",
+        id: process.env.WHOP_PLAN_AUDIO_MONTHLY ?? "plan_nOiAkCNkabcuI",
         unit_amount: 599,
         currency: "usd",
         recurring: { interval: "month" },
@@ -22,12 +21,12 @@ const FALLBACK_PRODUCTS = [
     ],
   },
   {
-    id: "prod-full-monthly",
+    id: process.env.WHOP_PLAN_FULL_MONTHLY ?? "plan_GpVrV4qfY7w1r",
     name: "Full Monthly",
     description: "Unlimited audio + vision — Leo sees and hears you 24/7",
     prices: [
       {
-        id: "price_1TGDzUPnPNh4x29iqfTcK073",
+        id: process.env.WHOP_PLAN_FULL_MONTHLY ?? "plan_GpVrV4qfY7w1r",
         unit_amount: 1099,
         currency: "usd",
         recurring: { interval: "month" },
@@ -36,12 +35,12 @@ const FALLBACK_PRODUCTS = [
     ],
   },
   {
-    id: "prod-audio-session",
+    id: process.env.WHOP_PLAN_AUDIO_SESSION ?? "plan_sGuJXPFZipTzB",
     name: "Audio Session",
     description: "30-minute audio session — Leo listens to you",
     prices: [
       {
-        id: "price_1TGDzUPnPNh4x29i3mTtQ1RE",
+        id: process.env.WHOP_PLAN_AUDIO_SESSION ?? "plan_sGuJXPFZipTzB",
         unit_amount: 299,
         currency: "usd",
         recurring: null,
@@ -50,12 +49,12 @@ const FALLBACK_PRODUCTS = [
     ],
   },
   {
-    id: "prod-full-session",
+    id: process.env.WHOP_PLAN_FULL_SESSION ?? "plan_T3sw3zyV777y2",
     name: "Full Session",
     description: "30-minute audio + vision session — Leo's full attention",
     prices: [
       {
-        id: "price_1TGDzVPnPNh4x29iJe6Cc0yo",
+        id: process.env.WHOP_PLAN_FULL_SESSION ?? "plan_T3sw3zyV777y2",
         unit_amount: 499,
         currency: "usd",
         recurring: null,
@@ -65,72 +64,60 @@ const FALLBACK_PRODUCTS = [
   },
 ];
 
+// Tier tag from plan title
+const TIER_FOR_TITLE: Record<string, string> = {
+  "Audio Monthly": "audio-monthly",
+  "Full Monthly": "full-monthly",
+  "Audio Session": "audio-session",
+  "Full Session": "full-session",
+};
+
+const PRICE_FOR_TIER: Record<string, number> = {
+  "audio-monthly": 599,
+  "full-monthly": 1099,
+  "audio-session": 299,
+  "full-session": 499,
+};
+
 router.get("/products", async (_req, res): Promise<void> => {
-  // Try live DB first (populated by stripe-replit-sync)
   try {
-    const rows = await storage.listProductsWithPrices();
-    const productsMap = new Map<string, any>();
-    for (const row of rows as any[]) {
-      if (!productsMap.has(row.product_id)) {
-        productsMap.set(row.product_id, {
-          id: row.product_id,
-          name: row.product_name,
-          description: row.product_description ?? "",
-          prices: [],
+    const whop = await getWhopClient();
+    const companyId = process.env.WHOP_COMPANY_ID;
+    if (!companyId) throw new Error("WHOP_COMPANY_ID not set");
+
+    const plansResp = await whop.plans.list({ company_id: companyId });
+    const plans = plansResp?.data ?? [];
+
+    if (plans.length > 0) {
+      const products = plans
+        .filter((plan: any) => plan.visibility !== "archived")
+        .map((plan: any) => {
+          const title: string = plan.product?.title ?? "";
+          const tier = TIER_FOR_TITLE[title] ?? title.toLowerCase().replace(/\s+/g, "-");
+          const isSubscription = plan.plan_type === "renewal";
+          const priceInCents = Math.round((plan.renewal_price || plan.initial_price || 0) * 100);
+          return {
+            id: plan.id,
+            name: title,
+            description: plan.description ?? "",
+            prices: [
+              {
+                id: plan.id,
+                unit_amount: priceInCents || PRICE_FOR_TIER[tier] || 0,
+                currency: plan.currency ?? "usd",
+                recurring: isSubscription ? { interval: "month" } : null,
+                metadata: { tier },
+              },
+            ],
+          };
         });
-      }
-      if (row.price_id) {
-        productsMap.get(row.product_id).prices.push({
-          id: row.price_id,
-          unit_amount: row.unit_amount,
-          currency: row.currency,
-          recurring: row.recurring ?? null,
-          metadata: row.price_metadata ?? null,
-        });
-      }
-    }
-    const dbProducts = Array.from(productsMap.values());
-    if (dbProducts.length > 0) {
-      res.json({ data: dbProducts });
+      res.json({ data: products });
       return;
     }
-  } catch (_dbErr) {
-    // DB not available — fall through
+  } catch (err: any) {
+    logger.warn({ err: err.message }, "Whop API unavailable — using fallback products");
   }
 
-  // Try live Stripe API next
-  try {
-    const stripe = await getUncachableStripeClient();
-    const [products, prices] = await Promise.all([
-      stripe.products.list({ active: true, limit: 20 }),
-      stripe.prices.list({ active: true, limit: 40 }),
-    ]);
-    const productsMap = new Map<string, any>();
-    for (const p of products.data) {
-      productsMap.set(p.id, { id: p.id, name: p.name, description: p.description ?? "", prices: [] });
-    }
-    for (const pr of prices.data) {
-      const productId = typeof pr.product === "string" ? pr.product : pr.product.id;
-      if (productsMap.has(productId)) {
-        productsMap.get(productId).prices.push({
-          id: pr.id,
-          unit_amount: pr.unit_amount,
-          currency: pr.currency,
-          recurring: pr.recurring ?? null,
-          metadata: pr.metadata ?? null,
-        });
-      }
-    }
-    const stripeProducts = Array.from(productsMap.values());
-    if (stripeProducts.length > 0) {
-      res.json({ data: stripeProducts });
-      return;
-    }
-  } catch (_stripeErr) {
-    logger.warn("Stripe API unavailable — using hardcoded fallback products");
-  }
-
-  // Hardcoded fallback — always shows the four tiers
   res.json({ data: FALLBACK_PRODUCTS });
 });
 
