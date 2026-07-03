@@ -60,6 +60,7 @@
     "@expo-google-fonts/raleway": "^0.4.2",
     "expo-av": "^16.0.8",
     "expo-file-system": "^56.0.7",
-    "expo-speech": "~14.0.8"
+    "expo-speech": "~14.0.8",
+    "react-native-purchases": "^10.4.1"
   }
 }
