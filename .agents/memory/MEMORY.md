@@ -1,3 +1,5 @@
 - [Bridge session endpoint](bridge-session-endpoint.md) — POST /api/bridge/session bypasses Stripe; only active when BRIDGE_API_KEY env var is set; returns sessionId + wsUrl + visionUrl.
 - [Screen share vision](screen-share-vision.md) — getDisplayMedia() → hidden video element → canvas capture → /api/grok-vision; same interval as camera (3s); NotAllowedError on dismiss is silently ignored.
 - [storage.createSession signature](storage-create-session.md) — requires id: crypto.randomUUID() explicitly; caller must generate the UUID, it is not auto-generated.
+- [EAS Build in Replit Sandbox](eas-build-replit-sandbox.md) — use EAS_SKIP_AUTO_FINGERPRINT=1 + EAS_NO_VCS=1 + env -i; install eas-cli at workspace root not inside native app
+- [Deployment must use Reserved VM](deployment-vm-required.md) — WebSocket /api/grok-live requires always-on VM; autoscale will drop Leo sessions mid-conversation
