@@ -18,6 +18,9 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_DOMAIN": "924e3075-c4fd-46b6-9b30-62b750c5c182-00-3pnhqespvdp4n.worf.replit.dev"
       }
     },
     "production": {
