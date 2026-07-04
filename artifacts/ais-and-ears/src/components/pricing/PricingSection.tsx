@@ -92,7 +92,7 @@ export function PricingSection() {
       <div className="w-full max-w-md mx-auto text-center p-8 glass-panel rounded-2xl border-primary/20">
         <Radio className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="text-xl font-bold text-foreground mb-2">No Uplinks Found</h3>
-        <p className="text-muted-foreground">No tiers available. Please configure Stripe products.</p>
+        <p className="text-muted-foreground">No tiers available. Please configure Whop plans.</p>
       </div>
     );
   }
