@@ -63,7 +63,7 @@ export default function TermsOfService() {
               </table>
             </div>
             <p className="text-muted-foreground text-sm">
-              All prices in USD. Payments processed by Stripe.
+              All prices in USD. Payments processed by Whop.
             </p>
           </section>
 

@@ -16,7 +16,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-display font-light text-primary mb-3">What We Collect</h2>
             <p className="text-muted-foreground mb-3">
-              <strong className="text-foreground">Payment information</strong> — processed exclusively by Stripe. We never see or store your card number. We retain only a Stripe session ID and the tier you purchased.
+              <strong className="text-foreground">Payment information</strong> — processed exclusively by Whop. We never see or store your card number. We retain only a payment session ID and the tier you purchased.
             </p>
             <p className="text-muted-foreground mb-3">
               <strong className="text-foreground">Session metadata</strong> — session ID, tier, start time, and expiration time. Stored to authenticate your access.
@@ -37,8 +37,8 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-display font-light text-primary mb-3">Third-Party Services</h2>
             <p className="text-muted-foreground mb-2">
-              <strong className="text-foreground">Stripe</strong> — handles all payment processing. Your payment data is governed by{" "}
-              <a href="https://stripe.com/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Stripe's Privacy Policy</a>.
+              <strong className="text-foreground">Whop</strong> — handles all payment processing. Your payment data is governed by{" "}
+              <a href="https://whop.com/privacy/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Whop's Privacy Policy</a>.
             </p>
             <p className="text-muted-foreground">
               <strong className="text-foreground">xAI</strong> — powers Leo's voice and vision responses. Your real-time audio and frames are transmitted to xAI's API and governed by{" "}
@@ -67,7 +67,7 @@ export default function PrivacyPolicy() {
                   </tr>
                   <tr>
                     <td className="px-4 py-3">Payment records</td>
-                    <td className="px-4 py-3">Retained by Stripe per their policy</td>
+                    <td className="px-4 py-3">Retained by Whop per their policy</td>
                   </tr>
                 </tbody>
               </table>
