@@ -104,10 +104,26 @@ https.get('<log-url>', { headers: {'Accept-Encoding': 'identity'} }, res => {
 
 ## Expo project info
 
-- Project: `@livhappier/ais-and-ears-native`
-- Expo project ID: `99f06f7a-90df-4b77-8138-206c11df7762`
+- Project: `@livhappierapps/ais-and-ears-native`
+- Expo project ID: `8c8d85fb-57c4-4c5c-91cf-1cd4bc90b0f9` (re-created July 2026 — old ID `99f06f7a...` was deleted)
+- Account ID: `1fab176d-47e6-48c3-8935-b29099032a52` (needed to re-create via GraphQL API)
 - Package: `com.livhappierapps.aisandears`
 - `EXPO_TOKEN` is set as a Replit secret
+- app.json `owner` must be `livhappierapps` (not `livhappier`)
+
+## If project ID stops working again
+
+The project was deleted once from expo.dev. Re-create via GraphQL:
+```js
+node -e "
+const https = require('https');
+const token = process.env.EXPO_TOKEN;
+const q = JSON.stringify({ query: \`mutation { app { createApp(appInput: { accountId: \"1fab176d-47e6-48c3-8935-b29099032a52\", projectName: \"ais-and-ears-native\" }) { id fullName } } }\` });
+const r = https.request({ hostname:'api.expo.dev', path:'/graphql', method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token} }, res => { let d=''; res.on('data',c=>d+=c); res.on('end',()=>console.log(d)); });
+r.write(q); r.end();
+"
+```
+Then update `extra.eas.projectId` in app.json with the new ID.
 
 ## Build phases in order (healthy build)
 
