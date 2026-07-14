@@ -5,12 +5,9 @@
   "type": "module",
   "scripts": {
     "check": "tsx ./src/integration-check.ts",
-    "seed": "tsx ./src/seed-products.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {
-    "stripe": "20.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:"
