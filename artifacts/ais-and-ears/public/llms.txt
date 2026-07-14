@@ -1,0 +1,20 @@
+# AIs&Ears
+> Real-time AI voice and vision assistant powered by xAI Grok.
+
+AIs&Ears gives users a direct, unfiltered conversation with Leo — an AI that can hear through your microphone and see through your camera or screen. No transcriptions, no middlemen. Paid access only via subscription or single-session purchase.
+
+## Public Pages
+
+/ - Product landing page and pricing
+/privacy - Privacy policy
+/terms - Terms of service
+/HOW-IT-WORKS.md - Full product explanation
+
+## About
+
+- Product: AIs&Ears
+- Company: LivHappier Apps (livhappierapps.com)
+- AI model: xAI Grok (grok-voice-think-fast-1.0) — voice alias: Leo
+- Capabilities: Real-time voice conversation, live camera vision, live screen share vision
+- Pricing: $5.99/mo (audio), $10.99/mo (audio + vision), $2.99 (30-min audio session), $4.99 (30-min full session)
+- Platform: Web app + iOS/Android mobile app
