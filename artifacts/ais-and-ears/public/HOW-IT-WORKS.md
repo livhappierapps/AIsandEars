@@ -147,13 +147,13 @@ The server sends the image as an inline base64 data URL with `detail: "low"` to 
 No session = no Leo. Every WebSocket connection and every vision request validates a `sessionId` against a Postgres DB row before reaching xAI.
 
 ```
-POST /api/checkout { priceId, tier }
-  → Stripe Checkout session or Payment Link
-  → user pays
-  → redirect to /?success=true&session_id=cs_xxx
+POST /api/checkout { tier }
+  → Whop checkout configuration → purchase URL
+  → user pays on Whop
+  → redirect to /?success=true&membership_id=mem_xxx
 
-GET /api/checkout/verify?session_id=cs_xxx&tier=audio-monthly
-  → verifies with Stripe
+GET /api/checkout/verify?membership_id=mem_xxx&tier=audio-monthly
+  → verifies membership with Whop API
   → creates row in paid_sessions table
   → returns { sessionId (UUID), tier, expiresAt }
 
@@ -184,7 +184,7 @@ Get a key at [console.x.ai](https://console.x.ai).
 | `src/components/feed/ConversationFeed.tsx` | Web session UI — orchestrates mic, camera, WebSocket, playback |
 | `artifacts/api-server/src/websocket/grokRealtime.ts` | WS proxy → xAI Realtime API (heavily commented) |
 | `artifacts/api-server/src/routes/grokVision.ts` | Camera snapshot → Grok Vision REST call |
-| `artifacts/api-server/src/routes/checkout.ts` | Stripe checkout + session verification |
+| `artifacts/api-server/src/routes/checkout.ts` | Whop checkout + session verification |
 | `lib/db/src/schema/sessions.ts` | `paid_sessions` table schema |
 
 ---
@@ -208,8 +208,8 @@ Docs: [docs.x.ai/docs/guides/live](https://docs.x.ai/docs/guides/live)
 
 ```
 XAI_API_KEY=xai-...              # from console.x.ai
-STRIPE_SECRET_KEY=sk_test_...    # Standard key, not Restricted (mk_ prefix won't work)
-STRIPE_PUBLISHABLE_KEY=pk_test_...
+WHOP_API_KEY=...                 # from whop.com dashboard
+WHOP_COMPANY_ID=...              # your Whop company ID
 DATABASE_URL=...                 # PostgreSQL connection string
 SESSION_SECRET=...               # any random string
 ```
@@ -218,7 +218,7 @@ SESSION_SECRET=...               # any random string
 
 ## Adapting This for Your Own Project
 
-1. **Voice only, no payment gate**: remove the `storage.getSession()` check in `grokRealtime.ts` and skip Stripe entirely
+1. **Voice only, no payment gate**: remove the `storage.getSession()` check in `grokRealtime.ts` and skip payment entirely
 2. **Different AI persona**: change the `instructions` string in the `session.update` message
 3. **Different voice**: change `voice: "Ara"` — check xAI docs for available voices
 4. **Mobile audio**: the mobile app currently uses text modality. PCM16 mic streaming on mobile requires `react-native-live-audio-stream` — same WebSocket, same server, different client audio capture

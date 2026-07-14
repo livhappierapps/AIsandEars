@@ -14,7 +14,7 @@ pnpm monorepo. AIs&Ears is a paid-only subscription/pay-per-session app where th
 | Mobile frontend | Expo SDK 54, React Native 0.81, Expo Router 6 |
 | AI Voice | xAI `grok-voice-think-fast-1.0` over `wss://api.x.ai/v1/realtime` |
 | AI Vision | xAI `grok-2-vision-1212` via `POST https://api.x.ai/v1/chat/completions` |
-| Payments | Stripe (Replit integration, stripe-replit-sync) |
+| Payments | Whop (web checkout) + RevenueCat (mobile IAP) |
 
 ## Monorepo Structure
 
@@ -32,8 +32,6 @@ lib/
 scripts/
   src/
     integration-check.ts # 15-check API test suite
-    seed-products.ts     # Creates Stripe products
-    stripeClient.ts      # Stripe client for scripts
 docs/
   privacy-policy.md      # Privacy Policy (source — Sable wires to livhappierapps.com)
   terms-of-service.md    # Terms of Service (source — Sable wires to livhappierapps.com)
@@ -42,7 +40,7 @@ docs/
 ## What Future Agents Must Know
 
 - **Two frontends, one API server.** Both `ais-and-ears` and `ais-and-ears-native` use the same `artifacts/api-server` — no server changes needed for mobile features.
-- **No free access.** All sessions are created via verified Stripe payment only. No demo/test routes.
+- **No free access.** All sessions are created via verified Whop payment only. No demo/test routes.
 - **Tier validation** is enforced at both `/api/checkout` and `/api/checkout/verify`. Only `audio-monthly`, `full-monthly`, `audio-session`, `full-session` are valid.
 - **Bridge endpoint** `POST /api/bridge/session` exists for trusted external apps (Middlemain). Only active if `BRIDGE_API_KEY` env var is set.
 - **Mobile is PCM16 (iOS).** The mobile app uses expo-av + expo-file-system for 500ms chunked WAV recording, strips 44-byte header, sends raw PCM16. Android falls back gracefully.
@@ -50,7 +48,7 @@ docs/
 - **`Appearance.setColorScheme()`** crashes on React Native Web — always guard with `Platform.OS !== 'web'`.
 - **`useNativeDriver: true`** fails on React Native Web — use `Platform.OS !== 'web'` conditional.
 - **expo-speech has NO config plugin** — never add it to the `plugins` array in `app.json`.
-- **Stripe key format**: `STRIPE_SECRET_KEY` must be `sk_test_51...` (Standard). The `mk_` prefix (Restricted key) causes 401 errors.
+- **Payments**: Whop handles web checkout. RevenueCat handles iOS in-app purchases (required for App Store). See Pricing Tiers section for Whop plan IDs.
 - **TypeScript**: All packages fully clean (`pnpm run typecheck` — 0 errors across all 5 packages).
 - **Security audit last run**: June 27 2026 — all clean. Dependency audit: 0 vulns (undici override added). HoundDog: 0. SAST: 48 findings all in dev/build tooling scripts (not shipped production code).
 - **Audio processing**: `noiseSuppression`, `echoCancellation`, and `autoGainControl` are all disabled in getUserMedia — Leo receives raw unfiltered audio including music, ambient sound, and instrument notes.
@@ -72,12 +70,12 @@ Model `grok-voice-think-fast-1.0` · Voice `Ara` · Turn detection `server_vad` 
 
 ## Pricing Tiers
 
-| Tier ID | Price | Type | Stripe Price ID (sandbox) |
+| Tier ID | Price | Type | Env Var |
 |---|---|---|---|
-| `audio-monthly` | $5.99/mo | Subscription | `price_1TGDzTPnPNh4x29isbIS2PnE` |
-| `full-monthly` | $10.99/mo | Subscription | `price_1TGDzUPnPNh4x29iqfTcK073` |
-| `audio-session` | $2.99 | One-time (30 min) | `price_1TGDzUPnPNh4x29i3mTtQ1RE` |
-| `full-session` | $4.99 | One-time (30 min) | `price_1TGDzVPnPNh4x29iJe6Cc0yo` |
+| `audio-monthly` | $5.99/mo | Subscription | `WHOP_PLAN_AUDIO_MONTHLY` |
+| `full-monthly` | $10.99/mo | Subscription | `WHOP_PLAN_FULL_MONTHLY` |
+| `audio-session` | $2.99 | One-time (30 min) | `WHOP_PLAN_AUDIO_SESSION` |
+| `full-session` | $4.99 | One-time (30 min) | `WHOP_PLAN_FULL_SESSION` |
 
 ## Architecture
 
@@ -101,9 +99,9 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | `artifacts/ais-and-ears-native/context/SettingsContext.tsx` | Mobile settings + dark mode |
 | `artifacts/api-server/src/websocket/grokRealtime.ts` | WS proxy → xAI Voice Agent |
 | `artifacts/api-server/src/routes/grokVision.ts` | Camera/screen snapshot → Grok Vision |
-| `artifacts/api-server/src/routes/checkout.ts` | Stripe checkout + verify + tier validation |
+| `artifacts/api-server/src/routes/checkout.ts` | Whop checkout + verify + tier validation |
 | `artifacts/api-server/src/routes/bridge.ts` | Bridge session endpoint (Middlemain / external apps) |
-| `artifacts/api-server/src/routes/products.ts` | Product listing (DB → Stripe → hardcoded fallback) |
+| `artifacts/api-server/src/routes/products.ts` | Product listing (Whop API → hardcoded fallback) |
 | `artifacts/api-server/src/storage.ts` | Drizzle session CRUD |
 | `lib/db/src/schema/sessions.ts` | `paid_sessions` table schema |
 | `docs/privacy-policy.md` | Privacy Policy source (for Sable / livhappierapps.com) |
@@ -114,19 +112,18 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | Route | Method | Purpose |
 |---|---|---|
 | `/api/products` | GET | List products |
-| `/api/checkout` | POST | Create Stripe session or payment link |
-| `/api/checkout/verify` | GET | Verify payment → create DB session |
+| `/api/checkout` | POST | Create Whop checkout configuration → purchase URL |
+| `/api/checkout/verify` | GET | Verify Whop membership → create DB session |
 | `/api/grok-live` | WS | Proxy → xAI Voice Agent API |
 | `/api/grok-vision` | POST | Camera/screen snapshot → Grok Vision |
-| `/api/bridge/session` | POST | Create session without Stripe (BRIDGE_API_KEY required) |
-| `/api/stripe/webhook` | POST | Stripe webhook (signature verified) |
+| `/api/bridge/session` | POST | Create session without payment (BRIDGE_API_KEY required) |
 | `/api/ai-token` | POST | 410 Deprecated stub — do not expand |
 
 ## Payment Flow
 
-1. `POST /api/checkout` `{ priceId, tier, successUrl?, cancelUrl? }` → Stripe session or payment link URL
-2. User pays on Stripe → redirects back with `?success=true&session_id=cs_...`
-3. `GET /api/checkout/verify?session_id=...&tier=...` → creates DB row → `{ sessionId, tier, expiresAt }`
+1. `POST /api/checkout` `{ tier, successUrl?, cancelUrl? }` → Whop purchase URL
+2. User pays on Whop → redirects back with `?success=true&membership_id=mem_xxx`
+3. `GET /api/checkout/verify?membership_id=mem_xxx&tier=...` → verifies with Whop API → creates DB row → `{ sessionId, tier, expiresAt }`
 4. Frontend opens `ConversationFeed` / mobile `conversation.tsx` with `sessionId`
 
 ## Security Model
@@ -136,7 +133,7 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 - **imageData**: Regex-validated base64 data URL, capped at ~2MB → 413 if oversized.
 - **Session auth**: Every realtime/vision request validates `sessionId` against DB before reaching xAI.
 - **API key**: `XAI_API_KEY` server-side only — never sent to frontend.
-- **Redirect validation**: `PricingSection.tsx` only redirects to `*.stripe.com` or same-origin.
+- **Redirect validation**: `PricingSection.tsx` only redirects to `*.whop.com` or same-origin.
 - **Bridge endpoint**: Only active when `BRIDGE_API_KEY` env var is set; timing-safe key comparison.
 
 ## Environment Variables
@@ -144,13 +141,15 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | Variable | Purpose | Required |
 |---|---|---|
 | `XAI_API_KEY` | xAI Grok (Realtime + Vision) | Yes |
-| `STRIPE_SECRET_KEY` | `sk_test_...` or `sk_live_...` Standard key | For checkout |
-| `STRIPE_PUBLISHABLE_KEY` | Frontend Stripe key | For checkout |
+| `WHOP_API_KEY` | Whop API key for checkout + membership verify | Yes |
+| `WHOP_COMPANY_ID` | Whop company ID | Yes |
+| `WHOP_PLAN_AUDIO_MONTHLY` | Whop plan ID for audio-monthly tier | Yes |
+| `WHOP_PLAN_FULL_MONTHLY` | Whop plan ID for full-monthly tier | Yes |
+| `WHOP_PLAN_AUDIO_SESSION` | Whop plan ID for audio-session tier | Yes |
+| `WHOP_PLAN_FULL_SESSION` | Whop plan ID for full-session tier | Yes |
 | `DATABASE_URL` | Auto-provisioned PostgreSQL | Yes |
 | `SESSION_SECRET` | Express session secret | Yes |
 | `BRIDGE_API_KEY` | Bridge session endpoint auth key | Optional (disables bridge if absent) |
-| `STRIPE_LINK_*` | Payment link URL fallbacks | Optional |
-| `STRIPE_WEBHOOK_SECRET` | Webhook signature | Optional, recommended in prod |
 
 ## Design
 
@@ -162,10 +161,10 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 
 - **Privacy Policy**: `docs/privacy-policy.md` → wired by Sable to `https://livhappierapps.com/apps/ais&ears/privacy`
 - **Terms of Service**: `docs/terms-of-service.md` → wired by Sable to `https://livhappierapps.com/apps/ais&ears/terms`
-- **In-app routes**: `/privacy` and `/terms` in the web app (for Stripe URL verification)
+- **In-app routes**: `/privacy` and `/terms` in the web app (for Whop URL verification)
 - **Footer**: Privacy + Terms links in HomeTab footer
 
-## Stripe Compliance Checklist
+## Whop Compliance Checklist
 
 - ✅ Privacy Policy URL: `https://livhappierapps.com/apps/ais&ears/privacy`
 - ✅ Terms of Service URL: `https://livhappierapps.com/apps/ais&ears/terms`
@@ -174,19 +173,18 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 - ✅ Product descriptions accurate (no misleading claims)
 - ✅ Subscription auto-renewal disclosed
 - ✅ 18+ age requirement stated
-- ⚠️ Live Stripe keys required before going live (swap from `sk_test_...` to `sk_live_...`)
 
 ## Apple App Store Compliance (IMPORTANT)
 
-**Current status**: Stripe checkout works for web and TestFlight. **App Store submission requires Apple IAP for digital goods.**
+**Current status**: Whop checkout works for web and TestFlight/sideload. **App Store submission requires Apple IAP for digital goods.**
 
-Apple's guidelines require in-app purchases through StoreKit for digital content sold within iOS apps distributed via the App Store. External Stripe checkout (browser-based) is only permitted for:
+Apple's guidelines require in-app purchases through StoreKit for digital content sold within iOS apps distributed via the App Store. External web checkout (browser-based) is only permitted for:
 - Physical goods with shipping
 - Apps with Apple's "StoreKit External Purchase Entitlement" (requires special approval + 27% Apple fee)
 
 **What this means:**
-- ✅ Web app: Stripe is fine indefinitely
-- ✅ TestFlight / development: Stripe is fine for testing
+- ✅ Web app: Whop checkout is fine indefinitely
+- ✅ TestFlight / sideload: Whop checkout is fine for testing
 - ⚠️ App Store submission: Must add RevenueCat/StoreKit IAP for iOS purchases
 - **Boss needs to make the Apple IAP decision before App Store submission**
 
@@ -265,7 +263,6 @@ True high-frequency vision (sub-3s) requires xAI Realtime API image frame suppor
 
 ## Known Issues & Fixed Bugs
 
-- **`mk_` Stripe key** — Restricted key prefix causes 401. Must use Standard `sk_test_...` key.
 - **Music filtered as background noise** — Fixed May 2026: disabled audio processing constraints.
 - **Vision interval too slow** — Fixed May 2026: reduced from 12s to 3s.
 - All other previously logged bugs resolved. See git history for details.

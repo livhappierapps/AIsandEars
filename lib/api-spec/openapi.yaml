@@ -10,7 +10,7 @@ tags:
   - name: health
     description: Health operations
   - name: products
-    description: Stripe product listing
+    description: Product listing
   - name: checkout
     description: Whop checkout and session verification
 
@@ -34,7 +34,7 @@ paths:
       operationId: getProducts
       tags: [products]
       summary: List products with prices
-      description: Returns all active Stripe products with their prices. Falls back to hardcoded tiers if DB/Stripe unavailable.
+      description: Returns all active products with their prices. Falls back to hardcoded tiers if Whop API is unavailable.
       responses:
         "200":
           description: Products list
@@ -47,9 +47,9 @@ paths:
     post:
       operationId: createCheckout
       tags: [checkout]
-      summary: Create Stripe checkout session
+      summary: Create Whop checkout session
       description: |
-        Creates a Stripe Checkout session (Path A) or returns a pre-configured Payment Link URL (Path B).
+        Creates a Whop checkout configuration and returns a purchase URL.
         `tier` must be one of: audio-monthly, full-monthly, audio-session, full-session.
       requestBody:
         required: true
@@ -71,7 +71,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: Stripe not configured
+          description: Whop not configured
           content:
             application/json:
               schema:

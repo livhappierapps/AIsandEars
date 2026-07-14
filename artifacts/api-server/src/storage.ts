@@ -8,11 +8,11 @@ export class Storage {
     return session;
   }
 
-  async getSessionByStripeId(stripeSessionId: string): Promise<Session | null> {
+  async getSessionByPaymentId(paymentSessionId: string): Promise<Session | null> {
     const [session] = await db
       .select()
       .from(sessionsTable)
-      .where(eq(sessionsTable.stripeSessionId, stripeSessionId));
+      .where(eq(sessionsTable.stripeSessionId, paymentSessionId));
     return session ?? null;
   }
 

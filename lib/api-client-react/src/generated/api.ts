@@ -112,7 +112,7 @@ export function useHealthCheck<
 }
 
 /**
- * Returns all active Stripe products with their prices. Falls back to hardcoded tiers if DB/Stripe unavailable.
+ * Returns all active products with their prices. Falls back to hardcoded tiers if Whop API is unavailable.
  * @summary List products with prices
  */
 export const getGetProductsUrl = () => {
@@ -188,10 +188,10 @@ export function useGetProducts<
 }
 
 /**
- * Creates a Stripe Checkout session (Path A) or returns a pre-configured Payment Link URL (Path B).
+ * Creates a Whop checkout configuration and returns a purchase URL.
 `tier` must be one of: audio-monthly, full-monthly, audio-session, full-session.
 
- * @summary Create Stripe checkout session
+ * @summary Create Whop checkout session
  */
 export const getCreateCheckoutUrl = () => {
   return `/api/checkout`;
@@ -254,7 +254,7 @@ export type CreateCheckoutMutationBody = BodyType<CheckoutRequest>;
 export type CreateCheckoutMutationError = ErrorType<ErrorResponse>;
 
 /**
- * @summary Create Stripe checkout session
+ * @summary Create Whop checkout session
  */
 export const useCreateCheckout = <
   TError = ErrorType<ErrorResponse>,

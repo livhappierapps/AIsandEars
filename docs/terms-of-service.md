@@ -21,7 +21,7 @@ You must be at least **18 years old** to use AIs&Ears. By using the service you 
 
 ## 3. Accounts and Sessions
 
-- Sessions are tied to a Stripe payment and are non-transferable.
+- Sessions are tied to a Whop payment and are non-transferable.
 - Each session has a defined expiry window (30 minutes for single-session purchases).
 - You are responsible for keeping your session URL confidential.
 
@@ -36,7 +36,7 @@ You must be at least **18 years old** to use AIs&Ears. By using the service you 
 | Audio Session | $2.99 | One-time, 30 minutes |
 | Full Session (voice + vision) | $4.99 | One-time, 30 minutes |
 
-All prices are in USD. Payments are processed securely by Stripe.
+All prices are in USD. Payments are processed securely by Whop.
 
 ### Subscriptions
 Monthly subscriptions renew automatically on the same day each month. You will be charged the listed monthly fee until you cancel. Cancellation takes effect at the end of the current billing period — you retain access until then.

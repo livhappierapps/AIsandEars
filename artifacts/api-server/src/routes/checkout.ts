@@ -124,12 +124,12 @@ router.get("/checkout/verify", async (req, res): Promise<void> => {
     }
 
     // Check we don't already have a session for this membership
-    let existing = await storage.getSessionByStripeId(membership_id);
+    let existing = await storage.getSessionByPaymentId(membership_id);
     if (!existing) {
       const isTimedSession = tier.includes("session");
       existing = await storage.createSession({
         id: crypto.randomUUID(),
-        stripeSessionId: membership_id, // reusing stripeSessionId column for Whop membership ID
+        stripeSessionId: membership_id, // DB column kept as-is; stores Whop membership ID
         tier,
         expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
         used: false,

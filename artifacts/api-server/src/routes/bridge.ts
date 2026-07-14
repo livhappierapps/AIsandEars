@@ -2,7 +2,7 @@
  * bridge.ts — Trusted external app session creation
  *
  * Allows a bridge app (e.g. a Leo testing harness or a sibling AI project)
- * to create a paid session without going through Stripe. Gated behind a
+ * to create a paid session without going through the payment system. Gated behind a
  * shared secret key (BRIDGE_API_KEY env var).
  *
  * Flow:
@@ -18,7 +18,7 @@
  * Security notes:
  *   - Only active if BRIDGE_API_KEY is set in env (silently 404 otherwise)
  *   - Key should be kept server-side in the bridge app — never expose to clients
- *   - Sessions created here are tracked in paid_sessions same as Stripe sessions
+ *   - Sessions created here are tracked in paid_sessions same as Whop sessions
  *   - Tier defaults to "full-session" (voice + vision, 30 min)
  */
 
@@ -87,7 +87,7 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
 
   const session = await storage.createSession({
     id: crypto.randomUUID(),
-    stripeSessionId: `bridge_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
+    stripeSessionId: `bridge_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`, // DB column kept as-is
     tier: resolvedTier,
     expiresAt,
   });

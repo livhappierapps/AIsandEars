@@ -10,7 +10,7 @@ AIs&Ears is operated by Liv Happier Apps. This Privacy Policy explains what info
 ## 1. What We Collect
 
 ### Information you provide
-- **Payment information** — processed exclusively by Stripe. We never see or store your full card number. We retain only the Stripe session ID and the tier you purchased.
+- **Payment information** — processed exclusively by Whop. We never see or store your full card number. We retain only the payment session ID and the tier you purchased.
 - **Email address** — only if you contact us directly or if a future account system is introduced.
 
 ### Information collected automatically during a session
@@ -31,7 +31,7 @@ AIs&Ears is operated by Liv Happier Apps. This Privacy Policy explains what info
 
 | Data | Purpose |
 |---|---|
-| Stripe session ID + tier | Authenticate paid session access |
+| Payment session ID + tier | Authenticate paid session access |
 | Audio (in transit) | Power Leo's real-time voice responses via xAI |
 | Camera / screen frames (in transit) | Power Leo's real-time visual responses via xAI |
 | Session expiry | Enforce 30-minute session windows |
@@ -40,8 +40,8 @@ AIs&Ears is operated by Liv Happier Apps. This Privacy Policy explains what info
 
 ## 3. Third-Party Services
 
-### Stripe
-Payments are processed by [Stripe, Inc.](https://stripe.com). When you purchase a session or subscription, you interact directly with Stripe's checkout. Your payment data is governed by [Stripe's Privacy Policy](https://stripe.com/privacy).
+### Whop
+Payments are processed by [Whop](https://whop.com). When you purchase a session or subscription, you interact directly with Whop's checkout. Your payment data is governed by [Whop's Privacy Policy](https://whop.com/privacy).
 
 ### xAI
 The AI (Leo) is powered by [xAI](https://x.ai). Your real-time audio, camera frames, and screen frames are transmitted to xAI's API. xAI's data handling is governed by [xAI's Privacy Policy](https://x.ai/legal/privacy-policy).
@@ -54,7 +54,7 @@ The AI (Leo) is powered by [xAI](https://x.ai). Your real-time audio, camera fra
 |---|---|
 | Paid session records | 90 days after session expiry, then deleted |
 | Audio / video / screen streams | Never stored — real-time transit only |
-| Stripe payment records | Retained by Stripe per their policy |
+| Whop payment records | Retained by Whop per their policy |
 
 ---
 
