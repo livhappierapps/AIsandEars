@@ -1,6 +1,20 @@
+import { Helmet } from "react-helmet-async";
+
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <Helmet>
+        <title>Terms of Service — AIs&amp;Ears</title>
+        <meta name="description" content="AIs&amp;Ears terms of service. Pricing, subscription auto-renewal, refund policy, acceptable use, and contact information for Liv Happier Apps." />
+        <link rel="canonical" href="https://livhappierapps.com/apps/ais-and-ears/terms" />
+        <meta property="og:title" content="Terms of Service — AIs&amp;Ears" />
+        <meta property="og:description" content="AIs&amp;Ears terms of service. Pricing, subscription auto-renewal, refund policy, acceptable use, and contact information for Liv Happier Apps." />
+        <meta property="og:url" content="https://livhappierapps.com/apps/ais-and-ears/terms" />
+        <meta name="twitter:title" content="Terms of Service — AIs&amp;Ears" />
+        <meta name="twitter:description" content="AIs&amp;Ears terms of service. Pricing, subscription auto-renewal, refund policy, acceptable use, and contact information for Liv Happier Apps." />
+        <meta name="robots" content="noindex, follow" />
+      </Helmet>
+
       <div className="max-w-3xl mx-auto px-6 py-16">
         <a href="/" className="text-primary/60 text-sm font-body hover:text-primary transition-colors mb-8 inline-block">
           ← Back to AIs&amp;Ears

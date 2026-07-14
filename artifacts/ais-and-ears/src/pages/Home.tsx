@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import { Helmet } from "react-helmet-async";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, RefreshCcw } from "lucide-react";
 import { useVerifyCheckout, getVerifyCheckoutQueryKey } from "@workspace/api-client-react";
@@ -86,6 +87,17 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col relative overflow-x-hidden">
+      <Helmet>
+        <title>AIs&amp;Ears — Talk Directly to Leo, Your AI Companion</title>
+        <meta name="description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
+        <link rel="canonical" href="https://livhappierapps.com/apps/ais-and-ears" />
+        <meta property="og:url" content="https://livhappierapps.com/apps/ais-and-ears" />
+        <meta property="og:title" content="AIs&amp;Ears — Talk Directly to Leo, Your AI Companion" />
+        <meta property="og:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
+        <meta name="twitter:title" content="AIs&amp;Ears — Talk Directly to Leo, Your AI Companion" />
+        <meta name="twitter:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
+      </Helmet>
+
       <Navbar />
 
       {/* Main content — padded for top navbar (64px) and bottom tab bar (64px) */}

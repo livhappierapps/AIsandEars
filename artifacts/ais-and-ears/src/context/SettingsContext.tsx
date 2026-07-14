@@ -40,6 +40,8 @@ const SettingsContext = createContext<SettingsContextValue>({
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(() => {
+    // Guard: localStorage is not available in SSR/Node environments
+    if (typeof window === "undefined") return DEFAULTS;
     try {
       const stored = localStorage.getItem("aisears-settings");
       return stored ? { ...DEFAULTS, ...JSON.parse(stored) } : DEFAULTS;

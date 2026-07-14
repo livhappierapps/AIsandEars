@@ -1,6 +1,20 @@
+import { Helmet } from "react-helmet-async";
+
 export default function PrivacyPolicy() {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <Helmet>
+        <title>Privacy Policy — AIs&amp;Ears</title>
+        <meta name="description" content="AIs&amp;Ears privacy policy. We do not store audio, video, or transcripts. Only payment session metadata is retained, for 90 days." />
+        <link rel="canonical" href="https://livhappierapps.com/apps/ais-and-ears/privacy" />
+        <meta property="og:title" content="Privacy Policy — AIs&amp;Ears" />
+        <meta property="og:description" content="AIs&amp;Ears privacy policy. We do not store audio, video, or transcripts. Only payment session metadata is retained, for 90 days." />
+        <meta property="og:url" content="https://livhappierapps.com/apps/ais-and-ears/privacy" />
+        <meta name="twitter:title" content="Privacy Policy — AIs&amp;Ears" />
+        <meta name="twitter:description" content="AIs&amp;Ears privacy policy. We do not store audio, video, or transcripts. Only payment session metadata is retained, for 90 days." />
+        <meta name="robots" content="noindex, follow" />
+      </Helmet>
+
       <div className="max-w-3xl mx-auto px-6 py-16">
         <a href="/" className="text-primary/60 text-sm font-body hover:text-primary transition-colors mb-8 inline-block">
           ← Back to AIs&amp;Ears
