@@ -1,3 +1,18 @@
 {
-  "expo": {}
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "97427421-0c87-44bf-8406-76c6f6b70cd0"
+      }
+    },
+    "android": {
+      "package": "com.livhappierapps.workspace"
+    },
+    "ios": {
+      "bundleIdentifier": "com.livhappierapps.workspace",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
 }

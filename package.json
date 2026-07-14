@@ -10,8 +10,8 @@
   },
   "private": true,
   "devDependencies": {
-    "eas-cli": "^20.5.1",
-    "prettier": "^3.8.1",
+    "eas-cli": "20.5.1",
+    "prettier": "^3.9.5",
     "typescript": "~5.9.2"
   },
   "dependencies": {
