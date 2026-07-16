@@ -36,33 +36,15 @@ minimumReleaseAgeExclude:
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - dtrace-provider
   - esbuild
   - msw
   - unrs-resolver
 
 overrides:
-  # Security patches — transitive dep overrides
-  undici: '>=6.27.0 <8.0.0'
-  fast-uri: '>=3.1.1'
-  lodash: '>=4.18.0'
-  path-to-regexp: '>=8.4.0'
-  picomatch: '>=4.0.4'
-  postcss: '>=8.5.10'
-  yaml: '>=2.8.3'
-  # CVE patches — June 2026 audit
-  qs: '>=6.15.2'
-  shell-quote: '>=1.8.4'
-  tar: '>=7.5.16'
-  js-yaml: '>=4.2.0'
-  markdown-it: '>=14.2.0'
-  uuid: '>=9.0.0'
   '@babel/core': '>=7.29.6'
-  'metro>ws': '7.5.11'
-  'react-devtools-core>ws': '7.5.11'
-  '@react-native/dev-middleware>ws': '6.2.4'
-  'react-native>ws': '6.2.4'
-  '@expo/cli>ws': '8.21.0'
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
+  '@expo/cli>ws': 8.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-x64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-freebsd-ia32': '-'
@@ -73,6 +55,7 @@ overrides:
   '@expo/ngrok-bin>@expo/ngrok-bin-sunos-x64': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-win32-ia32': '-'
   '@expo/ngrok-bin>@expo/ngrok-bin-win32-x64': '-'
+  '@react-native/dev-middleware>ws': 6.2.4
   '@tailwindcss/oxide>@tailwindcss/oxide-android-arm64': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-darwin-arm64': '-'
   '@tailwindcss/oxide>@tailwindcss/oxide-darwin-x64': '-'
@@ -109,6 +92,8 @@ overrides:
   esbuild>@esbuild/win32-arm64: '-'
   esbuild>@esbuild/win32-ia32: '-'
   esbuild>@esbuild/win32-x64: '-'
+  fast-uri: '>=3.1.1'
+  js-yaml: '>=4.2.0'
   lightningcss>lightningcss-android-arm64: '-'
   lightningcss>lightningcss-darwin-arm64: '-'
   lightningcss>lightningcss-darwin-x64: '-'
@@ -119,6 +104,15 @@ overrides:
   lightningcss>lightningcss-linux-x64-musl: '-'
   lightningcss>lightningcss-win32-arm64-msvc: '-'
   lightningcss>lightningcss-win32-x64-msvc: '-'
+  lodash: '>=4.18.0'
+  markdown-it: '>=14.2.0'
+  metro>ws: 7.5.11
+  path-to-regexp: '>=8.4.0'
+  picomatch: '>=4.0.4'
+  postcss: '>=8.5.10'
+  qs: '>=6.15.2'
+  react-devtools-core>ws: 7.5.11
+  react-native>ws: 6.2.4
   rollup>@rollup/rollup-android-arm-eabi: '-'
   rollup>@rollup/rollup-android-arm64: '-'
   rollup>@rollup/rollup-darwin-arm64: '-'
@@ -143,3 +137,8 @@ overrides:
   rollup>@rollup/rollup-win32-ia32-msvc: '-'
   rollup>@rollup/rollup-win32-x64-gnu: '-'
   rollup>@rollup/rollup-win32-x64-msvc: '-'
+  shell-quote: '>=1.8.4'
+  tar: '>=7.5.16'
+  undici: '>=6.27.0 <8.0.0'
+  uuid: '>=9.0.0'
+  yaml: '>=2.8.3'
