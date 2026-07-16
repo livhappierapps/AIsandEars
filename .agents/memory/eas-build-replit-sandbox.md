@@ -102,6 +102,10 @@ https.get('<log-url>', { headers: {'Accept-Encoding': 'identity'} }, res => {
 "
 ```
 
+## Stale root-level app.json / eas.json — deleted July 2026
+
+The workspace root had a stale `app.json` (wrong project ID `97427421`, wrong package `com.livhappierapps.workspace`) and `eas.json` (bare template). These were created by an EAS scaffold and never cleaned up. They were deleted. Do not recreate them — EAS reads from `artifacts/ais-and-ears-native/` only.
+
 ## Expo project info
 
 - Project: `@livhappierapps/ais-and-ears-native`

@@ -48,15 +48,18 @@ docs/
 - **`Appearance.setColorScheme()`** crashes on React Native Web — always guard with `Platform.OS !== 'web'`.
 - **`useNativeDriver: true`** fails on React Native Web — use `Platform.OS !== 'web'` conditional.
 - **expo-speech has NO config plugin** — never add it to the `plugins` array in `app.json`.
+- **New Architecture is OFF.** `newArchEnabled: false` in app.json — Samsung budget devices + multiple native packages = instability on new arch. Do not re-enable without testing.
+- **React Compiler is OFF.** `reactCompiler` removed from `experiments` in app.json — was causing experimental instability. Do not re-enable.
 - **Payments**: Whop handles web checkout. RevenueCat handles iOS in-app purchases (required for App Store). See Pricing Tiers section for Whop plan IDs.
 - **TypeScript**: All packages fully clean (`pnpm run typecheck` — 0 errors across all 5 packages).
-- **Security audit last run**: June 27 2026 — all clean. Dependency audit: 0 vulns (undici override added). HoundDog: 0. SAST: 48 findings all in dev/build tooling scripts (not shipped production code).
 - **Audio processing**: `noiseSuppression`, `echoCancellation`, and `autoGainControl` are all disabled in getUserMedia — Leo receives raw unfiltered audio including music, ambient sound, and instrument notes.
 - **Vision interval**: 3 seconds for both camera and screen share. Camera: `videoRef` → canvas → `/api/grok-vision`. Screen: `screenVideoRef` (hidden) → canvas → `/api/grok-vision`.
 - **Screen share**: `getDisplayMedia()` → hidden `<video ref={screenVideoRef}>`. `NotAllowedError` on dismiss is silently swallowed. Track `"ended"` event always fires when user stops via browser UI.
 - **Three senses toggles**: Hearing (mic mute/unmute via track.enabled), Camera vision, Screen vision — all independent, all live-toggleable during a session.
 - **Legal pages**: `/privacy` and `/terms` routes exist in the web app. Source docs in `docs/`.
 - **`storage.createSession`** requires `id: crypto.randomUUID()` explicitly — caller provides UUID.
+- **EAS builds run from `artifacts/ais-and-ears-native/`** — the workspace root formerly had stale `app.json` + `eas.json` with wrong project IDs; both have been deleted.
+- **EXPO_TOKEN** — needed for EAS CLI auth. If expired: expo.dev → Account Settings → Access Tokens → create new → update Replit Secret.
 
 ## xAI API
 
@@ -149,6 +152,7 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | `WHOP_PLAN_FULL_SESSION` | Whop plan ID for full-session tier | Yes |
 | `DATABASE_URL` | Auto-provisioned PostgreSQL | Yes |
 | `SESSION_SECRET` | Express session secret | Yes |
+| `EXPO_TOKEN` | EAS CLI auth — expires periodically, must be refreshed | Yes (for EAS builds) |
 | `BRIDGE_API_KEY` | Bridge session endpoint auth key | Optional (disables bridge if absent) |
 
 ## Design
@@ -202,24 +206,21 @@ A bundled app combining AIs&Ears + Memory Machine into one product sold in app s
 
 **EAS Build is configured.** Package IDs set (`com.livhappierapps.aisandears`). Profiles: `development`, `preview` (APK/IPA), `production` (AAB/IPA for stores).
 
-#### First-time setup (one-time, from Replit shell)
+#### Fire an EAS build (from Replit shell)
 ```bash
-cd artifacts/ais-and-ears-native
-npx eas-cli@latest login          # login with expo.dev account
-npx eas-cli@latest build:configure  # links project to Expo account (adds projectId to app.json)
-```
-
-#### Get a Samsung APK (sideload for testing)
-```bash
-cd artifacts/ais-and-ears-native
-npx eas-cli@latest build --platform android --profile preview
-# ~15-25 min cloud build → download link → sideload to Samsung
+cd /home/runner/workspace/artifacts/ais-and-ears-native && \
+env -i \
+  HOME=$HOME \
+  PATH=/nix/store/s7awkfc4pym4zj139fsxrjs5xwf5hhnd-nodejs-24.13.0-wrapped/bin:/home/runner/workspace/node_modules/.bin:/usr/bin:/bin \
+  EXPO_TOKEN=$(printenv EXPO_TOKEN) \
+  EAS_SKIP_AUTO_FINGERPRINT=1 \
+  EAS_NO_VCS=1 \
+  eas build --platform android --profile preview --non-interactive --no-wait
 ```
 
 #### Get a TestFlight IPA (iOS internal testing)
 ```bash
-npx eas-cli@latest build --platform ios --profile preview
-# Requires Apple Dev account connected in EAS dashboard
+# Same command, change --platform android to --platform ios
 ```
 
 #### Submit to Google Play (internal track first)
@@ -231,40 +232,48 @@ npx eas-cli@latest submit --platform android --latest
 
 #### Submit to App Store
 ⚠️ Apple IAP decision required first — see Apple compliance section above.
-```bash
-# Fill in eas.json submit.production.ios fields (appleId, ascAppId, appleTeamId)
-npx eas-cli@latest build --platform ios --profile production
-npx eas-cli@latest submit --platform ios --latest
-```
 
 **App Store submission requires Apple IAP decision (Boss). See Apple compliance section above.**
 
 ### Vision — Future
 True high-frequency vision (sub-3s) requires xAI Realtime API image frame support over WebSocket (not yet available).
 
-## Security Audit — June 27 2026
+## Security Audit — July 16 2026
 
 | Scanner | Status |
 |---|---|
-| Dependency audit | ✅ 0 vulnerabilities — `undici >=6.27.0` override added to fix 1 high + 1 moderate + 2 low CVEs in `@expo/cli>undici` |
-| SAST (app code) | ⚠️ 48 medium findings — ALL in `ais-and-ears-native/scripts/build.js` + `server/serve.js` + `server/templates/landing-page.html` (dev/build tooling only, never executed at runtime) + 1 in `mockup-sandbox/src/App.tsx` (internal design tool). Zero findings in API server or web app production code. |
+| Dependency audit | ✅ 0 critical — 5 high in transitive deps (`node-forge@1.3.1` × 2, `minimatch@5.1.2` × 3) — overrides added: `node-forge >=1.3.2`, `minimatch >=5.1.8` |
+| SAST | ⚠️ 109 findings — ALL in `.agents/skills/` (Replit platform files, not app code). Zero findings in API server, web app, or mobile production code. |
 | HoundDog | ✅ 0 findings |
 | Integration tests | ✅ 15/15 `pnpm --filter @workspace/scripts run check` |
-| Full typecheck | ✅ All 5 packages clean — `pnpm run typecheck` exits 0 |
+| Full typecheck | ✅ All packages clean — `pnpm run typecheck` exits 0 |
 
-### SAST False-Positive Detail
+### Cleanup — July 16 2026
 
-| File | Findings | Verdict |
-|---|---|---|
-| `ais-and-ears-native/scripts/build.js` | 37 medium — fs/path-join with internal function args | ✅ False positive — internal EAS build script, no user input, never deployed |
-| `ais-and-ears-native/server/serve.js` | 8 medium — same + http-server warning | ✅ False positive — manual dev utility (`npm run serve`), no active workflow |
-| `ais-and-ears-native/server/templates/landing-page.html` | 2 medium — CDN script tag missing SRI | ⚠️ Low risk — dev-only QR code page, never user-facing in production |
-| `mockup-sandbox/src/App.tsx` | 1 medium — dynamic property access `mod[name]` | ✅ False positive — internal design canvas tool, name comes from filesystem keys |
+Deleted junk/dead files:
+- Root `app.json` (wrong project ID `97427421`, wrong package) — was a stale EAS scaffold
+- Root `eas.json` (bare template, no env vars) — was a stale EAS scaffold
+- `seo_strategy.md` — temp planning doc
+- `ais-and-ears-source.zip` — temp zip artifact
+- `artifacts/ais-and-ears/public/HOW-IT-WORKS.md` — stray doc in public folder
+- `artifacts/ais-and-ears-native/components/KeyboardAwareScrollViewCompat.tsx` — dead component, zero imports
+- `artifacts/ais-and-ears-native/server/` — dev-only QR code server, never shipped
+- `artifacts/ais-and-ears-native/scripts/` — dev-only EAS build trigger, never shipped
+
+Removed unused native packages from APK:
+- `react-native-reanimated`, `react-native-worklets`, `react-native-svg`
+- `expo-glass-effect`, `expo-location`, `expo-image`
+- `@expo-google-fonts/inter`, `babel-plugin-react-compiler`
+
+Stability changes:
+- `newArchEnabled: false` — Old Architecture, battle-tested on budget Android
+- Removed `reactCompiler: true` — experimental, disabled
 
 ## Known Issues & Fixed Bugs
 
 - **Music filtered as background noise** — Fixed May 2026: disabled audio processing constraints.
 - **Vision interval too slow** — Fixed May 2026: reduced from 12s to 3s.
+- **APK crashed on Samsung A17** — Fixed July 2026: removed `react-native-keyboard-controller`, disabled New Architecture, stripped 8 unused native packages with native init footprint.
 - All other previously logged bugs resolved. See git history for details.
 
 ## User Preferences
