@@ -8,6 +8,7 @@ import { SettingsProvider } from "@/context/SettingsContext";
 const Home = lazy(() => import("@/pages/Home"));
 const PrivacyPolicy = lazy(() => import("@/pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("@/pages/TermsOfService"));
+const Install = lazy(() => import("@/pages/Install"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 const queryClient = new QueryClient({
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/privacy" component={PrivacyPolicy} />
         <Route path="/terms" component={TermsOfService} />
+        <Route path="/install" component={Install} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

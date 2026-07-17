@@ -42,7 +42,7 @@ docs/
 - **Two frontends, one API server.** Both `ais-and-ears` and `ais-and-ears-native` use the same `artifacts/api-server` — no server changes needed for mobile features.
 - **No free access.** All sessions are created via verified Whop payment only. No demo/test routes.
 - **Tier validation** is enforced at both `/api/checkout` and `/api/checkout/verify`. Only `audio-monthly`, `full-monthly`, `audio-session`, `full-session` are valid.
-- **Bridge endpoint** `POST /api/bridge/session` exists for trusted external apps (Middlemain). Only active if `BRIDGE_API_KEY` env var is set.
+- **Bridge endpoint** `POST /api/bridge/session` exists for trusted external apps (Middlemain). Only active if `BRIDGE_API_KEY` env var is set. Key goes in request body as `apiKey`, not a header.
 - **Mobile is PCM16 (iOS).** The mobile app uses expo-av + expo-file-system for 500ms chunked WAV recording, strips 44-byte header, sends raw PCM16. Android falls back gracefully.
 - **Mobile deep link scheme**: `ais-and-ears-native://` — checkout POSTs optional `successUrl`/`cancelUrl` for mobile deep link return.
 - **`Appearance.setColorScheme()`** crashes on React Native Web — always guard with `Platform.OS !== 'web'`.
@@ -59,7 +59,9 @@ docs/
 - **Legal pages**: `/privacy` and `/terms` routes exist in the web app. Source docs in `docs/`.
 - **`storage.createSession`** requires `id: crypto.randomUUID()` explicitly — caller provides UUID.
 - **EAS builds run from `artifacts/ais-and-ears-native/`** — the workspace root formerly had stale `app.json` + `eas.json` with wrong project IDs; both have been deleted.
-- **EXPO_TOKEN** — needed for EAS CLI auth. If expired: expo.dev → Account Settings → Access Tokens → create new → update Replit Secret.
+- **EXPO_TOKEN** — needed for EAS CLI auth and APK download proxy. If expired: expo.dev → Account Settings → Access Tokens → create new → update Replit Secret.
+- **APK download** — `GET /api/download/apk` follows EAS redirect chain server-side (expo.dev → api.expo.dev → S3) and streams the file. Requires `EXPO_TOKEN`. Install page at `/install`.
+- **`/api/download/apk` redirect chain** — expo.dev 307 → api.expo.dev → S3 (pre-signed, no auth). Must follow all hops server-side; browser cannot follow these with auth headers.
 
 ## xAI API
 
@@ -95,6 +97,7 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | File | Purpose |
 |---|---|
 | `artifacts/ais-and-ears/src/components/feed/ConversationFeed.tsx` | Web live session UI — mic, camera, screen share, Leo |
+| `artifacts/ais-and-ears/src/pages/Install.tsx` | /install — Android APK download page |
 | `artifacts/ais-and-ears/src/pages/PrivacyPolicy.tsx` | /privacy page |
 | `artifacts/ais-and-ears/src/pages/TermsOfService.tsx` | /terms page |
 | `artifacts/ais-and-ears/public/audio-processor.js` | AudioWorklet — PCM16 encoder |
@@ -104,6 +107,7 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | `artifacts/api-server/src/routes/grokVision.ts` | Camera/screen snapshot → Grok Vision |
 | `artifacts/api-server/src/routes/checkout.ts` | Whop checkout + verify + tier validation |
 | `artifacts/api-server/src/routes/bridge.ts` | Bridge session endpoint (Middlemain / external apps) |
+| `artifacts/api-server/src/routes/download.ts` | APK download proxy (follows EAS redirect chain) |
 | `artifacts/api-server/src/routes/products.ts` | Product listing (Whop API → hardcoded fallback) |
 | `artifacts/api-server/src/storage.ts` | Drizzle session CRUD |
 | `lib/db/src/schema/sessions.ts` | `paid_sessions` table schema |
@@ -120,7 +124,9 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | `/api/grok-live` | WS | Proxy → xAI Voice Agent API |
 | `/api/grok-vision` | POST | Camera/screen snapshot → Grok Vision |
 | `/api/bridge/session` | POST | Create session without payment (BRIDGE_API_KEY required) |
+| `/api/download/apk` | GET | Stream Android APK via EAS redirect chain |
 | `/api/ai-token` | POST | 410 Deprecated stub — do not expand |
+| `/install` | — | Android install landing page |
 
 ## Payment Flow
 
@@ -137,7 +143,7 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 - **Session auth**: Every realtime/vision request validates `sessionId` against DB before reaching xAI.
 - **API key**: `XAI_API_KEY` server-side only — never sent to frontend.
 - **Redirect validation**: `PricingSection.tsx` only redirects to `*.whop.com` or same-origin.
-- **Bridge endpoint**: Only active when `BRIDGE_API_KEY` env var is set; timing-safe key comparison.
+- **Bridge endpoint**: Only active when `BRIDGE_API_KEY` env var is set; timing-safe key comparison; `apiKey` in request body.
 
 ## Environment Variables
 
@@ -152,14 +158,15 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | `WHOP_PLAN_FULL_SESSION` | Whop plan ID for full-session tier | Yes |
 | `DATABASE_URL` | Auto-provisioned PostgreSQL | Yes |
 | `SESSION_SECRET` | Express session secret | Yes |
-| `EXPO_TOKEN` | EAS CLI auth — expires periodically, must be refreshed | Yes (for EAS builds) |
+| `EXPO_TOKEN` | EAS CLI auth + APK download proxy — expires periodically | Yes |
 | `BRIDGE_API_KEY` | Bridge session endpoint auth key | Optional (disables bridge if absent) |
 
 ## Design
 
 - **Colors**: Dark bg `#121f30`, verdigris accent `#82C4B0`, card `#172538`
 - **Fonts**: Cormorant Garamond (display/headings), Raleway (body)
-- **Banner**: `public/images/ai-banner.jpg` — AI character + steampunk gears
+- **Icon**: Leo — cyborg anime character (`public/icon.jpg`, `public/images/opengraph.jpg`)
+- **Mobile icon**: `assets/images/icon.png` (1024×1024 PNG, same Leo art)
 
 ## Legal
 
@@ -182,11 +189,6 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 
 **Current status**: Whop checkout works for web and TestFlight/sideload. **App Store submission requires Apple IAP for digital goods.**
 
-Apple's guidelines require in-app purchases through StoreKit for digital content sold within iOS apps distributed via the App Store. External web checkout (browser-based) is only permitted for:
-- Physical goods with shipping
-- Apps with Apple's "StoreKit External Purchase Entitlement" (requires special approval + 27% Apple fee)
-
-**What this means:**
 - ✅ Web app: Whop checkout is fine indefinitely
 - ✅ TestFlight / sideload: Whop checkout is fine for testing
 - ⚠️ App Store submission: Must add RevenueCat/StoreKit IAP for iOS purchases
@@ -218,62 +220,32 @@ env -i \
   eas build --platform android --profile preview --non-interactive --no-wait
 ```
 
-#### Get a TestFlight IPA (iOS internal testing)
-```bash
-# Same command, change --platform android to --platform ios
-```
-
-#### Submit to Google Play (internal track first)
-```bash
-# First: download Google service account JSON from Play Console → save as google-service-account.json
-npx eas-cli@latest build --platform android --profile production
-npx eas-cli@latest submit --platform android --latest
-```
-
-#### Submit to App Store
-⚠️ Apple IAP decision required first — see Apple compliance section above.
-
-**App Store submission requires Apple IAP decision (Boss). See Apple compliance section above.**
-
 ### Vision — Future
 True high-frequency vision (sub-3s) requires xAI Realtime API image frame support over WebSocket (not yet available).
 
-## Security Audit — July 16 2026
+## Security Audit — July 17 2026
 
 | Scanner | Status |
 |---|---|
-| Dependency audit | ✅ 0 critical — 5 high in transitive deps (`node-forge@1.3.1` × 2, `minimatch@5.1.2` × 3) — overrides added: `node-forge >=1.3.2`, `minimatch >=5.1.8` |
-| SAST | ⚠️ 109 findings — ALL in `.agents/skills/` (Replit platform files, not app code). Zero findings in API server, web app, or mobile production code. |
+| Dependency audit | ✅ 0 critical, 0 high — all clean (overrides for node-forge ≥1.3.2 + minimatch ≥5.1.8 active) |
+| SAST | ✅ 0 app findings — 1 false positive (EAS artifact ID flagged as "hardcoded secret"; it is a public URL requiring auth, not a credential) |
 | HoundDog | ✅ 0 findings |
-| Integration tests | ✅ 15/15 `pnpm --filter @workspace/scripts run check` |
 | Full typecheck | ✅ All packages clean — `pnpm run typecheck` exits 0 |
 
-### Cleanup — July 16 2026
+## Cleanup — July 17 2026
 
-Deleted junk/dead files:
-- Root `app.json` (wrong project ID `97427421`, wrong package) — was a stale EAS scaffold
-- Root `eas.json` (bare template, no env vars) — was a stale EAS scaffold
-- `seo_strategy.md` — temp planning doc
-- `ais-and-ears-source.zip` — temp zip artifact
-- `artifacts/ais-and-ears/public/HOW-IT-WORKS.md` — stray doc in public folder
-- `artifacts/ais-and-ears-native/components/KeyboardAwareScrollViewCompat.tsx` — dead component, zero imports
-- `artifacts/ais-and-ears-native/server/` — dev-only QR code server, never shipped
-- `artifacts/ais-and-ears-native/scripts/` — dev-only EAS build trigger, never shipped
-
-Removed unused native packages from APK:
-- `react-native-reanimated`, `react-native-worklets`, `react-native-svg`
-- `expo-glass-effect`, `expo-location`, `expo-image`
-- `@expo-google-fonts/inter`, `babel-plugin-react-compiler`
-
-Stability changes:
-- `newArchEnabled: false` — Old Architecture, battle-tested on budget Android
-- Removed `reactCompiler: true` — experimental, disabled
+- Updated web + mobile icon to Leo cyborg character (new brand art)
+- Added `/install` Android install landing page
+- Added `/api/download/apk` — streams APK via EAS redirect chain
+- Font delivery fixed: Cormorant Garamond + Raleway loaded from HTML shell (not CSS @import)
+- Code splitting: `ConversationFeed`, `PackagesTab`, `SettingsTab` lazy-loaded in `Home.tsx`
+- Bridge endpoint live — `BRIDGE_API_KEY` set, Middlemain tested
 
 ## Known Issues & Fixed Bugs
 
 - **Music filtered as background noise** — Fixed May 2026: disabled audio processing constraints.
 - **Vision interval too slow** — Fixed May 2026: reduced from 12s to 3s.
-- **APK crashed on Samsung A17** — Fixed July 2026: removed `react-native-keyboard-controller`, disabled New Architecture, stripped 8 unused native packages with native init footprint.
+- **APK crashed on Samsung A17** — Fixed July 2026: removed `react-native-keyboard-controller`, disabled New Architecture, stripped 8 unused native packages.
 - All other previously logged bugs resolved. See git history for details.
 
 ## User Preferences
