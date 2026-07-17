@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { Helmet } from "react-helmet-async";
@@ -7,10 +7,11 @@ import { AlertCircle, RefreshCcw } from "lucide-react";
 import { useVerifyCheckout, getVerifyCheckoutQueryKey } from "@workspace/api-client-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { TabBar, type TabId } from "@/components/layout/TabBar";
-import { ConversationFeed } from "@/components/feed/ConversationFeed";
 import { HomeTab } from "@/pages/tabs/HomeTab";
-import { PackagesTab } from "@/pages/tabs/PackagesTab";
-import { SettingsTab } from "@/pages/tabs/SettingsTab";
+
+const ConversationFeed = lazy(() => import("@/components/feed/ConversationFeed").then(m => ({ default: m.ConversationFeed })));
+const PackagesTab = lazy(() => import("@/pages/tabs/PackagesTab").then(m => ({ default: m.PackagesTab })));
+const SettingsTab = lazy(() => import("@/pages/tabs/SettingsTab").then(m => ({ default: m.SettingsTab })));
 
 interface DirectSession {
   valid: boolean;
@@ -145,12 +146,14 @@ export default function Home() {
               exit={{ opacity: 0, scale: 0.97 }}
               className="flex-1 flex flex-col"
             >
-              <ConversationFeed
-                sessionId={activeSession.sessionId}
-                tier={activeSession.tier}
-                expiresAt={activeSession.expiresAt}
-                onClose={handleCloseFeed}
-              />
+              <Suspense fallback={null}>
+                <ConversationFeed
+                  sessionId={activeSession.sessionId}
+                  tier={activeSession.tier}
+                  expiresAt={activeSession.expiresAt}
+                  onClose={handleCloseFeed}
+                />
+              </Suspense>
             </motion.div>
           )}
         </AnimatePresence>
@@ -179,7 +182,7 @@ export default function Home() {
                 transition={{ duration: 0.2 }}
                 className="flex-1 flex flex-col"
               >
-                <PackagesTab />
+                <Suspense fallback={null}><PackagesTab /></Suspense>
               </motion.div>
             )}
             {activeTab === "settings" && (
@@ -191,7 +194,7 @@ export default function Home() {
                 transition={{ duration: 0.2 }}
                 className="flex-1 flex flex-col"
               >
-                <SettingsTab />
+                <Suspense fallback={null}><SettingsTab /></Suspense>
               </motion.div>
             )}
           </AnimatePresence>
