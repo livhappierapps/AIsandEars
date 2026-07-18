@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SettingsProvider } from "@/context/SettingsContext";
 
 const Home = lazy(() => import("@/pages/Home"));
+const Pricing = lazy(() => import("@/pages/Pricing"));
 const PrivacyPolicy = lazy(() => import("@/pages/PrivacyPolicy"));
 const TermsOfService = lazy(() => import("@/pages/TermsOfService"));
 const Install = lazy(() => import("@/pages/Install"));
@@ -25,6 +26,7 @@ function Router() {
     <Suspense fallback={null}>
       <Switch>
         <Route path="/" component={Home} />
+        <Route path="/pricing" component={Pricing} />
         <Route path="/privacy" component={PrivacyPolicy} />
         <Route path="/terms" component={TermsOfService} />
         <Route path="/install" component={Install} />

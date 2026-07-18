@@ -170,7 +170,7 @@ export default function Home() {
                 transition={{ duration: 0.2 }}
                 className="flex-1 flex flex-col"
               >
-                <HomeTab onGoToPackages={() => setActiveTab("packages")} />
+                <HomeTab />
               </motion.div>
             )}
             {activeTab === "packages" && (

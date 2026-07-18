@@ -1,13 +1,10 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Radio, ShoppingBag } from "lucide-react";
+import { Link } from "wouter";
 import { useSettings } from "@/context/SettingsContext";
 
-interface HomeTabProps {
-  onGoToPackages: () => void;
-}
-
-export function HomeTab({ onGoToPackages }: HomeTabProps) {
+export function HomeTab() {
   const { settings } = useSettings();
 
   return (
@@ -51,15 +48,16 @@ export function HomeTab({ onGoToPackages }: HomeTabProps) {
             </span>
           </div>
 
-          {/* CTA — takes them to Packages to pick a paid plan */}
-          <Button
-            variant="neon"
-            size="lg"
-            className="w-full max-w-sm text-lg py-6 rounded-2xl box-glow"
-            onClick={onGoToPackages}
-          >
-            <ShoppingBag className="w-5 h-5 mr-2" /> Choose Your Uplink
-          </Button>
+          {/* CTA — real link to /pricing so crawlers can follow it */}
+          <Link href="/pricing" className="w-full max-w-sm">
+            <Button
+              variant="neon"
+              size="lg"
+              className="w-full text-lg py-6 rounded-2xl box-glow"
+            >
+              <ShoppingBag className="w-5 h-5 mr-2" /> Choose Your Uplink
+            </Button>
+          </Link>
         </motion.div>
       </section>
 

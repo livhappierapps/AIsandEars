@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SettingsProvider } from "@/context/SettingsContext";
 import Home from "@/pages/Home";
+import Pricing from "@/pages/Pricing";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import TermsOfService from "@/pages/TermsOfService";
 
@@ -33,6 +34,7 @@ export function render(url: string): { html: string; helmet: HelmetServerState |
             <WouterRouter hook={makeStaticHook(url)} base="">
               <Switch>
                 <Route path="/" component={Home} />
+                <Route path="/pricing" component={Pricing} />
                 <Route path="/privacy" component={PrivacyPolicy} />
                 <Route path="/terms" component={TermsOfService} />
               </Switch>

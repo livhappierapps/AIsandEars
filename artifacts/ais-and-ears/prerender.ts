@@ -37,6 +37,51 @@ process.env.BASE_PATH = process.env.BASE_PATH ?? "/";
 // These are injected verbatim into <!--app-head--> in <head>.
 // Keep in sync with <Helmet> tags in the React page components.
 // ---------------------------------------------------------------------------
+const SOFTWARE_APP_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "AIs & Ears",
+  description:
+    "Real-time AI voice companion. Give Leo direct mic and camera access — no transcriptions, no filters, no middlemen.",
+  applicationCategory: "UtilitiesApplication",
+  operatingSystem: "Web, Android",
+  url: "https://livhappierapps.com/apps/ais-and-ears",
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Audio Session",
+      price: "2.99",
+      priceCurrency: "USD",
+      description: "30-minute single session — high-fidelity audio streaming to Leo",
+      availability: "https://schema.org/InStock",
+    },
+    {
+      "@type": "Offer",
+      name: "Full Session",
+      price: "4.99",
+      priceCurrency: "USD",
+      description: "30-minute single session — audio streaming plus live camera snapshots",
+      availability: "https://schema.org/InStock",
+    },
+    {
+      "@type": "Offer",
+      name: "Audio Monthly",
+      price: "5.99",
+      priceCurrency: "USD",
+      description: "Monthly subscription — unlimited audio sessions, 24/7 access",
+      availability: "https://schema.org/InStock",
+    },
+    {
+      "@type": "Offer",
+      name: "Full Monthly",
+      price: "10.99",
+      priceCurrency: "USD",
+      description: "Monthly subscription — unlimited audio and live camera sessions, 24/7 access",
+      availability: "https://schema.org/InStock",
+    },
+  ],
+});
+
 const ROUTE_HEAD: Record<string, string> = {
   "/": `
     <title>AIs&amp;Ears — Talk Directly to Leo, Your AI Companion</title>
@@ -46,7 +91,19 @@ const ROUTE_HEAD: Record<string, string> = {
     <meta property="og:title" content="AIs&amp;Ears — Talk Directly to Leo, Your AI Companion" />
     <meta property="og:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
     <meta name="twitter:title" content="AIs&amp;Ears — Talk Directly to Leo, Your AI Companion" />
-    <meta name="twitter:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />`,
+    <meta name="twitter:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
+    <script type="application/ld+json">${SOFTWARE_APP_LD}</script>`,
+
+  "/pricing": `
+    <title>Pricing — AIs&amp;Ears | AI Voice Sessions from $2.99</title>
+    <meta name="description" content="Choose your AIs&amp;Ears uplink. Single sessions from $2.99 or monthly subscriptions from $5.99. Raw PCM16 audio and live camera access for your AI companion Leo." />
+    <link rel="canonical" href="https://livhappierapps.com/apps/ais-and-ears/pricing" />
+    <meta property="og:url" content="https://livhappierapps.com/apps/ais-and-ears/pricing" />
+    <meta property="og:title" content="Pricing — AIs&amp;Ears | AI Voice Sessions from $2.99" />
+    <meta property="og:description" content="Choose your AIs&amp;Ears uplink. Single sessions from $2.99 or monthly subscriptions from $5.99." />
+    <meta name="twitter:title" content="Pricing — AIs&amp;Ears | AI Voice Sessions from $2.99" />
+    <meta name="twitter:description" content="Choose your AIs&amp;Ears uplink. Single sessions from $2.99 or monthly subscriptions from $5.99." />
+    <script type="application/ld+json">${SOFTWARE_APP_LD}</script>`,
 
   "/privacy": `
     <title>Privacy Policy — AIs&amp;Ears</title>
@@ -73,6 +130,7 @@ const ROUTE_HEAD: Record<string, string> = {
 
 const routes: Array<{ path: string; outFile: string }> = [
   { path: "/", outFile: "index.html" },
+  { path: "/pricing", outFile: "pricing/index.html" },
   { path: "/privacy", outFile: "privacy/index.html" },
   { path: "/terms", outFile: "terms/index.html" },
 ];
