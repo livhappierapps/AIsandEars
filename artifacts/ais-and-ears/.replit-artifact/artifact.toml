@@ -1,31 +1,35 @@
 kind = "web"
-previewPath = "/"
-title = "AIs&Ears"
-version = "1.0.0"
-id = "artifacts/ais-and-ears"
-router = "path"
+  previewPath = "/"
+  title = "AIs&Ears"
+  version = "1.0.0"
+  id = "artifacts/ais-and-ears"
+  router = "path"
 
-[[integratedSkills]]
-name = "react-vite"
-version = "1.0.0"
+  [[integratedSkills]]
+  name = "react-vite"
+  version = "1.0.0"
 
-[[services]]
-name = "web"
-paths = [ "/" ]
-localPort = 23469
+  [[services]]
+  name = "web"
+  paths = [ "/" ]
+  localPort = 23469
 
-[services.development]
-run = "pnpm --filter @workspace/ais-and-ears run dev"
+  [services.development]
+  run = "pnpm --filter @workspace/ais-and-ears run dev"
 
-[services.production]
-build = [ "pnpm", "--filter", "@workspace/ais-and-ears", "run", "build" ]
-publicDir = "artifacts/ais-and-ears/dist/public"
-serve = "static"
+  [services.production]
+  build = [ "pnpm", "--filter", "@workspace/ais-and-ears", "run", "build" ]
+  publicDir = "artifacts/ais-and-ears/dist/public"
+  serve = "static"
 
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+  # Explicit SPA fallback only for routes without prerendered HTML.
+  # Prerendered routes (/, /pricing, /privacy, /terms) are served directly as
+  # static files by subdirectory index.html resolution — no rewrite needed.
+  [[services.production.rewrites]]
+  from = "/install"
+  to = "/index.html"
 
-[services.env]
-PORT = "23469"
-BASE_PATH = "/"
+  [services.env]
+  PORT = "23469"
+  BASE_PATH = "/"
+  
