@@ -1,18 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://924e3075-c4fd-46b6-9b30-62b750c5c182-00-3pnhqespvdp4n-dktlctuu.worf.replit.dev/</loc>
+    <loc>https://livhappierapps.com/apps/ais-and-ears/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
-  </url>
-  <url>
-    <loc>https://924e3075-c4fd-46b6-9b30-62b750c5c182-00-3pnhqespvdp4n-dktlctuu.worf.replit.dev/privacy</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>https://924e3075-c4fd-46b6-9b30-62b750c5c182-00-3pnhqespvdp4n-dktlctuu.worf.replit.dev/terms</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.5</priority>
   </url>
 </urlset>

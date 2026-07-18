@@ -19,4 +19,4 @@ Allow: /
 User-agent: Bingbot
 Allow: /
 
-Sitemap: https://924e3075-c4fd-46b6-9b30-62b750c5c182-00-3pnhqespvdp4n-dktlctuu.worf.replit.dev/sitemap.xml
+Sitemap: https://livhappierapps.com/apps/ais-and-ears/sitemap.xml

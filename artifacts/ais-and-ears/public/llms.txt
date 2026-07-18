@@ -5,10 +5,10 @@ AIs&Ears gives users a direct, unfiltered conversation with Leo — an AI that c
 
 ## Public Pages
 
-/ - Product landing page and pricing
-/privacy - Privacy policy
-/terms - Terms of service
-/HOW-IT-WORKS.md - Full product explanation
+https://livhappierapps.com/apps/ais-and-ears/ - Product landing page and pricing
+https://livhappierapps.com/apps/ais-and-ears/privacy - Privacy policy
+https://livhappierapps.com/apps/ais-and-ears/terms - Terms of service
+https://livhappierapps.com/apps/ais-and-ears/HOW-IT-WORKS.md - Full product explanation
 
 ## About
 
