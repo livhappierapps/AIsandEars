@@ -9,6 +9,51 @@ import { Navbar } from "@/components/layout/Navbar";
 import { TabBar, type TabId } from "@/components/layout/TabBar";
 import { HomeTab } from "@/pages/tabs/HomeTab";
 
+const HOME_JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "AIs & Ears",
+  description:
+    "Real-time AI voice companion. Give Leo direct mic and camera access — no transcriptions, no filters, no middlemen.",
+  applicationCategory: "UtilitiesApplication",
+  operatingSystem: "Web, Android",
+  url: "https://livhappierapps.com/apps/ais-and-ears",
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Audio Session",
+      price: "2.99",
+      priceCurrency: "USD",
+      description: "30-minute single session — high-fidelity audio streaming to Leo",
+      availability: "https://schema.org/InStock",
+    },
+    {
+      "@type": "Offer",
+      name: "Full Session",
+      price: "4.99",
+      priceCurrency: "USD",
+      description: "30-minute single session — audio streaming plus live camera snapshots",
+      availability: "https://schema.org/InStock",
+    },
+    {
+      "@type": "Offer",
+      name: "Audio Monthly",
+      price: "5.99",
+      priceCurrency: "USD",
+      description: "Monthly subscription — unlimited audio sessions, 24/7 access",
+      availability: "https://schema.org/InStock",
+    },
+    {
+      "@type": "Offer",
+      name: "Full Monthly",
+      price: "10.99",
+      priceCurrency: "USD",
+      description: "Monthly subscription — unlimited audio and live camera sessions, 24/7 access",
+      availability: "https://schema.org/InStock",
+    },
+  ],
+});
+
 const ConversationFeed = lazy(() => import("@/components/feed/ConversationFeed").then(m => ({ default: m.ConversationFeed })));
 const PackagesTab = lazy(() => import("@/pages/tabs/PackagesTab").then(m => ({ default: m.PackagesTab })));
 const SettingsTab = lazy(() => import("@/pages/tabs/SettingsTab").then(m => ({ default: m.SettingsTab })));
@@ -97,6 +142,7 @@ export default function Home() {
         <meta property="og:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
         <meta name="twitter:title" content="AIs&amp;Ears — Talk Directly to Leo, Your AI Companion" />
         <meta name="twitter:description" content="Give Leo direct mic and camera access — real-time AI voice powered by xAI Grok. No transcripts. No filters. No middlemen. From $2.99 per session." />
+        <script type="application/ld+json">{HOME_JSON_LD}</script>
       </Helmet>
 
       <Navbar />
