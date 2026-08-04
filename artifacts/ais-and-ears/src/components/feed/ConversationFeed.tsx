@@ -9,6 +9,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { formatTime } from "@/lib/utils";
 import { useSettings } from "@/context/SettingsContext";
+import { clientLogger } from "@/lib/clientLogger";
 
 interface ConversationFeedProps {
   sessionId: string;
@@ -156,7 +157,12 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
 
     switch (msg.type) {
       case "session.created":
+        clientLogger.info("leo_session_created", { sessionId, model: msg.session?.model });
+        setStatus("connected");
+        addMessage("system", "Connected — say hello to Leo.");
+        break;
       case "session.updated":
+        clientLogger.info("leo_session_updated", { sessionId, model: msg.session?.model });
         setStatus("connected");
         addMessage("system", "Connected — say hello to Leo.");
         break;
@@ -183,14 +189,16 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         addMessage("user", "(speaking...)");
         break;
       case "error":
+        clientLogger.error("leo_xai_error", { sessionId, xaiError: msg.error });
         addMessage("system", `Leo error: ${msg.error?.message ?? "unknown"}`);
         break;
     }
-  }, [addMessage, playAudioChunk]);
+  }, [addMessage, playAudioChunk, sessionId]);
 
   // Connect to Leo
   const handleConnect = useCallback(async () => {
     setStatus("connecting");
+    clientLogger.info("leo_connect_attempt", { sessionId, useMic, useCam });
     addMessage("system", useMic ? "Requesting microphone access..." : "Connecting to Leo...");
 
     try {
@@ -233,12 +241,14 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       wsRef.current = ws;
 
       ws.onopen = () => {
+        clientLogger.info("leo_ws_open", { sessionId });
         addMessage("system", "Link established — Leo is waking up...");
       };
 
       ws.onmessage = (evt) => handleXaiMessage(evt.data);
 
       ws.onerror = () => {
+        clientLogger.error("leo_ws_error", { sessionId });
         setStatus("error");
         addMessage("system", "Connection error — waiting 2 seconds before you can retry...");
         setTimeout(() => {
@@ -248,8 +258,12 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       };
 
       ws.onclose = (evt) => {
-        if (evt.code !== 1000) {
+        const clean = evt.code === 1000;
+        if (!clean) {
+          clientLogger.warn("leo_ws_close_abnormal", { sessionId, code: evt.code, reason: evt.reason || "unknown" });
           addMessage("system", `Connection closed (${evt.code}): ${evt.reason || "unknown reason"}`);
+        } else {
+          clientLogger.info("leo_ws_close_clean", { sessionId, code: evt.code });
         }
         setStatus("idle");
         setMicActive(false);
@@ -268,6 +282,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       }
 
     } catch (err: any) {
+      clientLogger.error("leo_connect_setup_failed", { sessionId, message: err.message, name: err.name });
       setMediaError(err.message);
       setStatus("error");
       addMessage("system", `Setup failed: ${err.message}`);

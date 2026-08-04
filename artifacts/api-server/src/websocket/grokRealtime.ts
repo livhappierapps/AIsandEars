@@ -65,7 +65,10 @@ export function attachGrokRealtimeProxy(server: Server) {
     // We validate it's non-empty but never log or store it.
     const userProvidedKey = url.searchParams.get("userKey") ?? "";
 
+    logger.info({ sessionId: sessionId ?? "(none)", usingUserKey: !!userProvidedKey }, "Leo session connect");
+
     if (!sessionId) {
+      logger.warn({ event: "leo_connect_rejected", reason: "missing_session_id" }, "Leo connect rejected: missing sessionId");
       clientWs.close(4001, "Missing sessionId");
       return;
     }
@@ -74,9 +77,15 @@ export function attachGrokRealtimeProxy(server: Server) {
       // Gate every connection behind a paid session row in our DB.
       // No valid session = no xAI access, regardless of what key is used.
       const session = await storage.getSession(sessionId);
-      if (!session) { clientWs.close(4003, "Invalid session"); return; }
+      if (!session) {
+        logger.warn({ sessionId, event: "leo_connect_rejected", reason: "invalid_session" }, "Leo connect rejected: invalid session");
+        clientWs.close(4003, "Invalid session");
+        return;
+      }
       if (session.expiresAt && new Date() > session.expiresAt) {
-        clientWs.close(4003, "Session expired"); return;
+        logger.warn({ sessionId, event: "leo_connect_rejected", reason: "session_expired", expiresAt: session.expiresAt }, "Leo connect rejected: session expired");
+        clientWs.close(4003, "Session expired");
+        return;
       }
 
       // Key resolution: user-supplied key wins over server key.
@@ -168,7 +177,13 @@ export function attachGrokRealtimeProxy(server: Server) {
         if (clientWs.readyState === WebSocket.OPEN) clientWs.close();
       });
 
-      clientWs.on("close", () => {
+      clientWs.on("close", (code, reason) => {
+        const clean = code === 1000;
+        if (!clean) {
+          logger.warn({ sessionId, code, reason: reason.toString(), event: "leo_client_disconnect_abnormal" }, "Leo client disconnected abnormally");
+        } else {
+          logger.info({ sessionId, code, event: "leo_client_disconnect" }, "Leo client disconnected cleanly");
+        }
         if (xaiWs.readyState < WebSocket.CLOSING) xaiWs.close();
       });
 

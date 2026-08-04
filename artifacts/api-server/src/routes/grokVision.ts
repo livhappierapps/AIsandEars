@@ -32,6 +32,7 @@
 
 import { Router, type IRouter } from "express";
 import { storage } from "../storage";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -134,7 +135,18 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
 
     if (!response.ok) {
       const text = await response.text();
-      req.log?.error({ status: response.status, text }, "xAI Vision API error");
+      // Classify common upstream failures so they're queryable in logs
+      const isQuota = response.status === 429;
+      const isTimeout = response.status === 504 || response.status === 408;
+      const failureReason = isQuota ? "quota_exceeded" : isTimeout ? "upstream_timeout" : "upstream_error";
+      req.log?.error(
+        { sessionId, upstreamStatus: response.status, failureReason, responseText: text.slice(0, 500) },
+        "xAI Vision API error",
+      );
+      logger.error(
+        { sessionId, upstreamStatus: response.status, failureReason },
+        "grok-vision upstream failure",
+      );
       res.status(502).json({ error: "Grok Vision API error", details: text });
       return;
     }
@@ -147,7 +159,8 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
     const message = data.choices?.[0]?.message?.content ?? "...";
     res.json({ message, model: data.model ?? VISION_MODEL });
   } catch (err: any) {
-    req.log?.error({ err }, "Grok vision error");
+    req.log?.error({ err, sessionId }, "Grok vision unhandled error");
+    logger.error({ err, sessionId }, "grok-vision unhandled error");
     res.status(500).json({ error: err.message ?? "Vision processing failed" });
   }
 });
