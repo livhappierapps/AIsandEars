@@ -2,7 +2,14 @@ import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { setBaseUrl } from "@workspace/api-client-react";
 import "./index.css";
+
+// Point the generated API client at the external API host when deployed to
+// Cloudflare Pages (or any host that isn't the API server itself).
+// When VITE_API_BASE_URL is unset the client uses same-origin relative paths
+// (current Replit behaviour — no change needed there).
+setBaseUrl((import.meta.env.VITE_API_BASE_URL as string | undefined) || null);
 
 // ── Global error visibility ───────────────────────────────────────────────
 // Structured log format so any console capture (Sentry, LogRocket, etc.) can

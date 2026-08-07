@@ -28,6 +28,11 @@ type Message = {
 
 const VISION_INTERVAL_MS = 3_000;
 
+// When the web app is served from Cloudflare Pages (or any host other than the API server)
+// set VITE_API_BASE_URL to the API origin, e.g. https://ais-and-ears-api.onrender.com
+// Leave it unset for same-origin deployments (Replit).
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
+
 // Leo's base personality — kept in sync with the server-side session.update in grokRealtime.ts.
 // When music context is detected, we append it to this string via a session.update.
 const LEO_BASE_INSTRUCTIONS =
@@ -250,9 +255,14 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
         }
       }
 
-      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      // When VITE_API_BASE_URL is set the API lives on a different host (e.g. Render).
+      // Otherwise fall back to same-origin (Replit-hosted).
+      const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+      const wsBase = apiBase
+        ? apiBase.replace(/^https:/, "wss:").replace(/^http:/, "ws:")
+        : `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}`;
       const userKey = settings.xaiApiKey?.trim();
-      const wsUrl = `${proto}//${window.location.host}/api/grok-live?sessionId=${sessionId}${userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""}`;
+      const wsUrl = `${wsBase}/api/grok-live?sessionId=${sessionId}${userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -332,7 +342,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     try { b64 = btoa(combined); } catch { return; }
 
     try {
-      const res = await fetch("/api/music-analyze", {
+      const res = await fetch(`${API_BASE}/api/music-analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, audioData: b64, sampleRate: 24000 }),
@@ -427,7 +437,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
 
     try {
       const userKey = settings.xaiApiKey?.trim();
-      const res = await fetch("/api/grok-vision", {
+      const res = await fetch(`${API_BASE}/api/grok-vision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -480,7 +490,7 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
 
     try {
       const userKey = settings.xaiApiKey?.trim();
-      const res = await fetch("/api/grok-vision", {
+      const res = await fetch(`${API_BASE}/api/grok-vision`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

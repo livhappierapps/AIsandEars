@@ -16,6 +16,9 @@ const WHOP_PLAN_IDS: Record<string, string | undefined> = {
 };
 
 function getBaseUrl() {
+  // APP_BASE_URL is set on Render/Cloudflare/any external host (no trailing slash)
+  // e.g. APP_BASE_URL=https://ais-and-ears.pages.dev
+  if (process.env.APP_BASE_URL) return process.env.APP_BASE_URL;
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
   return domain ? `https://${domain}` : "http://localhost:80";
 }

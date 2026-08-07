@@ -56,17 +56,27 @@ app.post(
   },
 );
 
-// CORS — in production restrict to known Replit domains; in dev allow all origins
-const productionOrigins: string[] = process.env.REPLIT_DOMAINS
-  ? process.env.REPLIT_DOMAINS.split(",").map((d) => `https://${d.trim()}`)
-  : [];
+// CORS — allow origins listed in ALLOWED_ORIGINS (comma-separated, no trailing slash)
+// Falls back to REPLIT_DOMAINS for backwards compatibility with Replit-hosted deployments.
+// In dev (neither var set) all origins are allowed.
+//
+// Example: ALLOWED_ORIGINS=https://ais-and-ears.pages.dev,https://yourdomain.com
+const allowedOrigins: string[] = (() => {
+  if (process.env.ALLOWED_ORIGINS) {
+    return process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean);
+  }
+  if (process.env.REPLIT_DOMAINS) {
+    return process.env.REPLIT_DOMAINS.split(",").map((d) => `https://${d.trim()}`);
+  }
+  return [];
+})();
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      if (productionOrigins.length === 0) return callback(null, true);
-      if (productionOrigins.includes(origin)) return callback(null, true);
+      if (allowedOrigins.length === 0) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error(`CORS: origin '${origin}' not permitted`));
     },
     credentials: true,

@@ -137,7 +137,7 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 
 ## Security Model
 
-- **CORS**: Production restricted to `REPLIT_DOMAINS`. Dev allows all origins.
+- **CORS**: Production restricted to `ALLOWED_ORIGINS` env var (comma-separated, e.g. `https://ais-and-ears.pages.dev`). Falls back to `REPLIT_DOMAINS` for Replit-hosted deployments. Dev (neither set) allows all origins.
 - **Tier validation**: `VALID_TIERS` set at both checkout endpoints — unknown strings → 400.
 - **imageData**: Regex-validated base64 data URL, capped at ~2MB → 413 if oversized.
 - **Session auth**: Every realtime/vision request validates `sessionId` against DB before reaching xAI.
@@ -150,16 +150,18 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 | Variable | Purpose | Required |
 |---|---|---|
 | `XAI_API_KEY` | xAI Grok (Realtime + Vision) | Yes |
-| `WHOP_API_KEY` | Whop API key for checkout + membership verify | Yes |
+| `WHOP_API_KEY` | Whop API key — **primary auth path on Render/external hosts** | Yes |
 | `WHOP_COMPANY_ID` | Whop company ID | Yes |
 | `WHOP_PLAN_AUDIO_MONTHLY` | Whop plan ID for audio-monthly tier | Yes |
 | `WHOP_PLAN_FULL_MONTHLY` | Whop plan ID for full-monthly tier | Yes |
 | `WHOP_PLAN_AUDIO_SESSION` | Whop plan ID for audio-session tier | Yes |
 | `WHOP_PLAN_FULL_SESSION` | Whop plan ID for full-session tier | Yes |
-| `DATABASE_URL` | Auto-provisioned PostgreSQL | Yes |
+| `DATABASE_URL` | PostgreSQL connection string (Neon in production) | Yes |
 | `SESSION_SECRET` | Express session secret | Yes |
 | `EXPO_TOKEN` | EAS CLI auth + APK download proxy — expires periodically | Yes |
 | `BRIDGE_API_KEY` | Bridge session endpoint auth key | Optional (disables bridge if absent) |
+| `ALLOWED_ORIGINS` | Comma-separated allowed CORS origins, e.g. `https://ais-and-ears.pages.dev` | Prod |
+| `APP_BASE_URL` | Web app public URL — used for Whop redirect URLs, e.g. `https://ais-and-ears.pages.dev` | Prod |
 
 ## Design
 

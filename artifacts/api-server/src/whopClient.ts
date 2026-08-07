@@ -3,6 +3,15 @@ import Whop from "@whop/sdk";
 let clientPromise: Promise<Whop> | null = null;
 
 async function initWhopClient(): Promise<Whop> {
+  // ── Direct API key path (Render, Fly, any non-Replit host) ────────────────
+  // Set WHOP_API_KEY in your deployment environment and the Replit connector
+  // flow is bypassed entirely. Get your key at: app.whop.com → Settings → API Keys
+  if (process.env.WHOP_API_KEY) {
+    return new Whop({ apiKey: process.env.WHOP_API_KEY });
+  }
+
+  // ── Replit connector path (dev / Replit-hosted production) ────────────────
+  // Falls through to this only when WHOP_API_KEY is not set.
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
   const xReplitToken = process.env.REPL_IDENTITY
     ? "repl " + process.env.REPL_IDENTITY
@@ -12,8 +21,8 @@ async function initWhopClient(): Promise<Whop> {
 
   if (!hostname || !xReplitToken) {
     throw new Error(
-      "Missing Replit environment variables. " +
-        "Ensure the Whop integration is connected via the Integrations tab.",
+      "Whop not configured. Set WHOP_API_KEY (for Render/external hosting) " +
+        "or connect Whop via the Integrations tab (for Replit hosting).",
     );
   }
 

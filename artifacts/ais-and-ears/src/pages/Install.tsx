@@ -1,7 +1,10 @@
 import { Helmet } from "react-helmet-async";
 import { Download, Smartphone, Shield, Zap } from "lucide-react";
 
-const APK_URL = "/api/download/apk";
+// When VITE_API_BASE_URL is set (Cloudflare Pages deployment) the APK download
+// lives on the Render API host, not same-origin. Empty string = same-origin (Replit).
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "").replace(/\/$/, "");
+const APK_URL = `${API_BASE}/api/download/apk`;
 
 const steps = [
   { icon: Download, text: "Tap Download — your browser will save the file" },

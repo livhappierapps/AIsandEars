@@ -3,8 +3,9 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { attachGrokRealtimeProxy } from "./websocket/grokRealtime";
 
-const rawPort = process.env["PORT"];
-if (!rawPort) throw new Error("PORT environment variable is required but was not provided.");
+// Render (and most platforms) inject PORT automatically.
+// Default to 3000 for local dev so the server starts without extra env setup.
+const rawPort = process.env["PORT"] ?? "3000";
 const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) throw new Error(`Invalid PORT value: "${rawPort}"`);
 

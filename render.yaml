@@ -1,0 +1,67 @@
+services:
+  # ── AIs & Ears API Server ───────────────────────────────────────────────────
+  # Free tier: 750 hrs/month, spins down after 15 min of no traffic.
+  # UptimeRobot (free) pings /api/healthz every 5 min to keep it awake.
+  - type: web
+    name: ais-and-ears-api
+    runtime: node
+    region: oregon  # change to "frankfurt" or "singapore" if your users are elsewhere
+    plan: free
+    rootDir: .
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server run build
+    startCommand: node artifacts/api-server/dist/index.mjs
+    healthCheckPath: /api/healthz
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # PORT is injected automatically by Render — do not set it here.
+
+      # ── Secrets — set these in Render dashboard, not here ─────────────────
+      # Never commit real values. Add each one in Render → Environment → Add Env Var
+      - key: DATABASE_URL
+        sync: false       # paste your Neon connection string in Render dashboard
+
+      - key: XAI_API_KEY
+        sync: false       # your xAI / Grok API key
+
+      - key: WHOP_API_KEY
+        sync: false       # from app.whop.com → Settings → API Keys
+
+      - key: WHOP_WEBHOOK_SECRET
+        sync: false
+
+      - key: WHOP_PLAN_AUDIO_MONTHLY
+        sync: false
+
+      - key: WHOP_PLAN_FULL_MONTHLY
+        sync: false
+
+      - key: WHOP_PLAN_AUDIO_SESSION
+        sync: false
+
+      - key: WHOP_PLAN_FULL_SESSION
+        sync: false
+
+      - key: WHOP_COMPANY_ID
+        sync: false
+
+      - key: SESSION_SECRET
+        sync: false
+
+      - key: BRIDGE_API_KEY
+        sync: false
+
+      - key: EXPO_TOKEN
+        sync: false
+
+      # ── CORS & URL config ──────────────────────────────────────────────────
+      # Set ALLOWED_ORIGINS to your Cloudflare Pages URL (no trailing slash)
+      # e.g. https://ais-and-ears.pages.dev
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # Set APP_BASE_URL to your web app's public URL (used for Whop redirect URLs)
+      # e.g. https://ais-and-ears.pages.dev
+      - key: APP_BASE_URL
+        sync: false

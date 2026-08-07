@@ -92,10 +92,13 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
     expiresAt,
   });
 
-  const domain =
-    process.env.REPLIT_DEV_DOMAIN ??
-    process.env.REPLIT_DOMAINS?.split(",")[0]?.trim() ??
+  // APP_BASE_URL covers Render/Cloudflare; falls back to Replit vars for backwards compat
+  const rawBase =
+    process.env.APP_BASE_URL ??
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null) ??
+    (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]?.trim()}` : null) ??
     "";
+  const domain = rawBase.replace(/^https?:\/\//, "").replace(/\/$/, "");
 
   logger.info(
     { sessionId: session.id, tier: resolvedTier, durationMinutes: resolvedDuration },
