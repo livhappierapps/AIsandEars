@@ -1,8 +1,9 @@
 /**
  * musicAnalyze.ts — Server-side music analysis endpoint
  *
- * Accepts a base64-encoded WAV or raw PCM16 audio buffer and returns structured
- * JSON describing the musical content: BPM, key, mode, energy, mood tags.
+ * Accepts a base64-encoded audio buffer (WAV, raw PCM16, or AAC/M4A/AMR/3GP)
+ * and returns structured JSON describing the musical content: BPM, key, mode,
+ * energy, mood tags.
  *
  * Designed to be called every 3-8 seconds with short audio chunks.
  * Results are injected into Leo's conversation context as a compact packet.
@@ -13,7 +14,7 @@
  *   - Hard cap on buffer size (~5MB base64 ≈ ~3.7MB audio)
  *
  * ALGORITHM:
- *   1. Parse WAV header (or treat as raw PCM16 at 24 kHz)
+ *   1. Detect format (WAV magic bytes, format hint, or ffmpeg decode for compressed)
  *   2. Compute RMS energy and zero-crossing rate
  *   3. Compute chroma features via Goertzel algorithm (12 pitch classes)
  *   4. Detect key + mode via Krumhansl-Schmuckler profile correlation
@@ -23,13 +24,81 @@
  */
 
 import { Router, type IRouter } from "express";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as crypto from "crypto";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { storage } from "../storage";
 import { logger } from "../lib/logger";
+
+const execFileAsync = promisify(execFile);
+
+// Resolve ffmpeg binary: allow override via FFMPEG_BIN env var, otherwise rely on PATH.
+// In the Replit NixOS environment, ffmpeg is on PATH via the runtime PATH configuration.
+// In production deployments, set FFMPEG_BIN to an absolute path if needed.
+const FFMPEG_BIN = process.env.FFMPEG_BIN ?? "ffmpeg";
 
 const router: IRouter = Router();
 
 // Hard cap: ~5MB base64 ≈ ~3.75MB audio
 const MAX_AUDIO_B64_CHARS = 5_000_000;
+
+// ── Format detection ──────────────────────────────────────────────────────────
+
+/** True when the buffer starts with the RIFF/WAV magic bytes. */
+function isWAV(buf: Buffer): boolean {
+  return buf.length >= 4 && buf.readUInt32BE(0) === 0x52494646; // "RIFF"
+}
+
+/**
+ * Map a client-supplied format hint to an ffmpeg input-format string.
+ * Returns null when ffmpeg is not needed (WAV / raw PCM).
+ */
+function ffmpegFormatHint(hint?: string): string | null {
+  if (!hint) return null;
+  const lower = hint.toLowerCase();
+  if (lower === "m4a" || lower === "aac" || lower === "mp4") return "mp4";
+  if (lower === "amr" || lower === "3gp" || lower === "3gpp") return "amr";
+  if (lower === "ogg" || lower === "opus") return "ogg";
+  if (lower === "wav") return null; // handled natively
+  return lower; // pass through as-is
+}
+
+// ── FFmpeg decode to PCM WAV ──────────────────────────────────────────────────
+
+/**
+ * Transcode an arbitrary compressed audio buffer to 24 kHz mono PCM16 WAV
+ * using the system ffmpeg binary. Uses temp files for format compatibility
+ * (many container formats like M4A require seekable input streams).
+ *
+ * Throws if ffmpeg fails or produces no output.
+ */
+async function decodeAudioToWAV(inputBuffer: Buffer, inputFormat: string): Promise<Buffer> {
+  const id = crypto.randomBytes(8).toString("hex");
+  // Use the format hint as the file extension so ffmpeg auto-detects the container
+  const ext = inputFormat === "mp4" ? "m4a" : inputFormat;
+  const inputPath = path.join(os.tmpdir(), `leo-music-in-${id}.${ext}`);
+  const outputPath = path.join(os.tmpdir(), `leo-music-out-${id}.wav`);
+
+  await fs.promises.writeFile(inputPath, inputBuffer);
+
+  try {
+    await execFileAsync(FFMPEG_BIN, [
+      "-y",                    // overwrite output without prompting
+      "-i", inputPath,         // input file
+      "-ar", "24000",          // resample to 24 kHz
+      "-ac", "1",              // mono
+      "-acodec", "pcm_s16le",  // PCM 16-bit little-endian
+      outputPath,              // output WAV
+    ]);
+    return await fs.promises.readFile(outputPath);
+  } finally {
+    fs.promises.unlink(inputPath).catch(() => {});
+    fs.promises.unlink(outputPath).catch(() => {});
+  }
+}
 
 // ── Key detection profiles ────────────────────────────────────────────────────
 // Krumhansl-Schmuckler key profiles (1990). Root = C (index 0).
@@ -298,11 +367,12 @@ function describeMood(rms: number, bpm: number, mode: "major" | "minor"): string
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 router.post("/music-analyze", async (req, res): Promise<void> => {
-  const { sessionId, audioData, sampleRate: clientSampleRate, userKey } = req.body as {
+  const { sessionId, audioData, sampleRate: clientSampleRate, userKey, format } = req.body as {
     sessionId?: string;
     audioData?: string;
     sampleRate?: number;
     userKey?: string;
+    format?: string; // Optional hint: "m4a", "aac", "amr", etc. (from Android client)
   };
 
   // ── Input validation ────────────────────────────────────────────────────────
@@ -335,10 +405,31 @@ router.post("/music-analyze", async (req, res): Promise<void> => {
     const rawBuffer = Buffer.from(audioData, "base64");
 
     let parsed: ParsedAudio;
-    try {
-      parsed = parseWAV(rawBuffer);
-    } catch {
-      // Not a WAV — treat as raw PCM16 (from mobile mic)
+
+    const compressedFormat = ffmpegFormatHint(format);
+
+    if (isWAV(rawBuffer)) {
+      // Explicit WAV — parse directly (iOS PCM16 chunks wrapped in a WAV header)
+      try {
+        parsed = parseWAV(rawBuffer);
+      } catch {
+        parsed = fromRawPCM16(rawBuffer, clientSampleRate ?? 24000);
+      }
+    } else if (compressedFormat) {
+      // Client supplied a format hint (e.g. "m4a" from Android) — transcode via ffmpeg.
+      // Do NOT fall back to raw PCM16: treating compressed bytes as PCM produces
+      // garbage feature extraction while silently masking a configuration failure.
+      try {
+        const wavBuffer = await decodeAudioToWAV(rawBuffer, compressedFormat);
+        parsed = parseWAV(wavBuffer);
+        logger.debug({ sessionId, format: compressedFormat }, "music-analyze: ffmpeg decoded compressed audio");
+      } catch (decodeErr) {
+        logger.warn({ sessionId, format: compressedFormat, err: decodeErr }, "music-analyze: ffmpeg decode failed");
+        res.status(422).json({ error: "Could not decode audio. Ensure ffmpeg is available in the server environment." });
+        return;
+      }
+    } else {
+      // No hint and not WAV — treat as raw PCM16 (iOS streaming chunks)
       parsed = fromRawPCM16(rawBuffer, clientSampleRate ?? 24000);
     }
 

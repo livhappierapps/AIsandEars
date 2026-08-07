@@ -96,6 +96,22 @@ const MIC_RECORDING_OPTIONS: Audio.RecordingOptions = {
   web: {},
 };
 
+// ── Android music analysis recording options ─────────────────────────────────
+// Dedicated 4-second AAC/M4A clips recorded solely for music analysis on Android.
+// Not used for voice streaming — only POSTed to /api/music-analyze for feature extraction.
+// iOS preset is included to satisfy the RecordingOptions type but is never used on Android.
+const ANDROID_MUSIC_OPTIONS: Audio.RecordingOptions = {
+  ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+  android: {
+    extension: ".m4a",
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+  },
+};
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function ConversationScreen() {
@@ -128,11 +144,13 @@ export default function ConversationScreen() {
   const currentRecordingRef = useRef<Audio.Recording | null>(null);
 
   // Music analysis refs
-  // Stores the last 10 × 500ms chunks of raw PCM16 (base64) = up to 5 seconds
+  // Stores the last 10 × 500ms chunks of raw PCM16 (base64) = up to 5 seconds (iOS)
   const pcmChunksRef = useRef<string[]>([]);
   const musicIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastMusicContextRef = useRef<string | null>(null);
   const musicAnalysisActiveRef = useRef(false);
+  // Android: dedicated recording for music analysis (separate from the mic streaming loop)
+  const androidMusicRecordingRef = useRef<Audio.Recording | null>(null);
 
   // ── Session verification ─────────────────────────────────────────────────
   useEffect(() => {
@@ -236,6 +254,11 @@ export default function ConversationScreen() {
       if (musicIntervalRef.current) {
         clearInterval(musicIntervalRef.current);
         musicIntervalRef.current = null;
+      }
+      // Android: stop dedicated music recording if running
+      if (androidMusicRecordingRef.current) {
+        androidMusicRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+        androidMusicRecordingRef.current = null;
       }
       // Stop mic if active when navigating away
       isMicActiveRef.current = false;
@@ -422,12 +445,52 @@ export default function ConversationScreen() {
 
   // ── Music analysis ───────────────────────────────────────────────────────
   //
-  // Every 5 seconds when mic is active and musicAnalysis is enabled:
+  // iOS path (every 5 seconds while mic is streaming):
   //   1. Combine the last 8 PCM16 chunks (4 seconds of audio)
-  //   2. POST to /api/music-analyze
+  //   2. POST to /api/music-analyze as raw PCM16 base64
+  //
+  // Android path (dedicated recording loop, independent of voice mic):
+  //   1. Record a 4-second M4A/AAC clip via expo-av
+  //   2. POST to /api/music-analyze — server decodes AAC via ffmpeg
+  //
+  // Both paths:
   //   3. If music detected, inject context into Leo's session via session.update
   //   4. If not music, clear the context so Leo isn't given stale info
 
+  /** Apply a music-analyze API response to Leo's session (shared by iOS + Android paths). */
+  const applyMusicAnalysisResult = useCallback((data: { type: string; context?: string }) => {
+    if (data.type !== "music" || !data.context) {
+      // Not music — clear stale music context if present
+      if (lastMusicContextRef.current) {
+        lastMusicContextRef.current = null;
+        setMusicContext(null);
+        wsRef.current?.send(JSON.stringify({
+          type: "session.update",
+          session: { instructions: BASE_INSTRUCTIONS },
+        }));
+      }
+      return;
+    }
+
+    // Avoid redundant session updates if context hasn't changed
+    if (data.context === lastMusicContextRef.current) return;
+    lastMusicContextRef.current = data.context;
+    setMusicContext(data.context);
+
+    // Update Leo's system prompt with music context
+    wsRef.current?.send(JSON.stringify({
+      type: "session.update",
+      session: {
+        instructions:
+          `${BASE_INSTRUCTIONS}\n\n` +
+          `🎵 Music context: ${data.context}. ` +
+          `If the user mentions the music, asks what's playing, or references the vibe, ` +
+          `naturally weave these musical qualities into your response.`,
+      },
+    }));
+  }, []);
+
+  // ── iOS path: analyze accumulated PCM16 chunks ───────────────────────────
   const analyzeMusicBuffer = useCallback(async () => {
     if (!musicAnalysisActiveRef.current) return;
     if (!verifiedSessionId) return;
@@ -455,61 +518,118 @@ export default function ConversationScreen() {
         }),
       });
       if (!res.ok) return;
-
-      const data = await res.json() as {
-        type: string;
-        context?: string;
-      };
-
-      if (data.type !== "music" || !data.context) {
-        // Not music — clear stale music context if present
-        if (lastMusicContextRef.current) {
-          lastMusicContextRef.current = null;
-          setMusicContext(null);
-          wsRef.current?.send(JSON.stringify({
-            type: "session.update",
-            session: { instructions: BASE_INSTRUCTIONS },
-          }));
-        }
-        return;
-      }
-
-      // Avoid redundant session updates if context hasn't changed
-      if (data.context === lastMusicContextRef.current) return;
-      lastMusicContextRef.current = data.context;
-      setMusicContext(data.context);
-
-      // Update Leo's system prompt with music context
-      wsRef.current?.send(JSON.stringify({
-        type: "session.update",
-        session: {
-          instructions:
-            `${BASE_INSTRUCTIONS}\n\n` +
-            `🎵 Music context: ${data.context}. ` +
-            `If the user mentions the music, asks what's playing, or references the vibe, ` +
-            `naturally weave these musical qualities into your response.`,
-        },
-      }));
+      applyMusicAnalysisResult(await res.json() as { type: string; context?: string });
     } catch {
       // Network errors — silently skip this cycle
     }
-  }, [verifiedSessionId]);
+  }, [verifiedSessionId, applyMusicAnalysisResult]);
+
+  // ── Android path: dedicated recording loop ───────────────────────────────
+  //
+  // Records a fresh 4-second AAC/M4A clip each cycle, sends it to the server,
+  // then immediately starts the next clip. No PCM chunks required.
+  const runAndroidMusicAnalysis = useCallback(async () => {
+    if (!musicAnalysisActiveRef.current) return;
+    if (!verifiedSessionId) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+    // Ensure microphone permission
+    const { status: permStatus } = await Audio.requestPermissionsAsync();
+    if (permStatus !== "granted") {
+      musicAnalysisActiveRef.current = false;
+      setMusicAnalysisActive(false);
+      return;
+    }
+
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+
+    const recording = new Audio.Recording();
+    androidMusicRecordingRef.current = recording;
+
+    try {
+      await recording.prepareToRecordAsync(ANDROID_MUSIC_OPTIONS);
+      await recording.startAsync();
+
+      // Collect 4 seconds of audio
+      await new Promise<void>((resolve) => setTimeout(resolve, 4000));
+
+      if (!musicAnalysisActiveRef.current) {
+        try { await recording.stopAndUnloadAsync(); } catch {}
+        androidMusicRecordingRef.current = null;
+        return;
+      }
+
+      await recording.stopAndUnloadAsync();
+      androidMusicRecordingRef.current = null;
+
+      const uri = recording.getURI();
+      if (uri && musicAnalysisActiveRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+        const base64 = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+
+        if (base64) {
+          try {
+            const res = await fetch(`https://${DOMAIN}/api/music-analyze`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                sessionId: verifiedSessionId,
+                audioData: base64,
+                format: "m4a",
+              }),
+            });
+            if (res.ok) {
+              applyMusicAnalysisResult(await res.json() as { type: string; context?: string });
+            }
+          } catch {
+            // Network errors — silently skip this cycle
+          }
+        }
+      }
+    } catch {
+      // Recording error — stop analysis gracefully
+      androidMusicRecordingRef.current = null;
+      musicAnalysisActiveRef.current = false;
+      setMusicAnalysisActive(false);
+      return;
+    }
+
+    // Continue loop
+    if (musicAnalysisActiveRef.current) {
+      runAndroidMusicAnalysis();
+    }
+  }, [verifiedSessionId, applyMusicAnalysisResult]);
 
   const startMusicAnalysis = useCallback(() => {
-    if (musicIntervalRef.current) return; // already running
+    if (musicAnalysisActiveRef.current) return; // already running
     musicAnalysisActiveRef.current = true;
     setMusicAnalysisActive(true);
-    musicIntervalRef.current = setInterval(analyzeMusicBuffer, 5000);
-    // Run first analysis after a short delay to let the buffer fill
-    setTimeout(analyzeMusicBuffer, 2000);
-  }, [analyzeMusicBuffer]);
+
+    if (Platform.OS === "android") {
+      // Android: dedicated AAC recording loop (no PCM chunks available)
+      runAndroidMusicAnalysis();
+    } else {
+      // iOS: interval over accumulated PCM16 chunks from the mic streaming loop
+      musicIntervalRef.current = setInterval(analyzeMusicBuffer, 5000);
+      // Run first analysis after a short delay to let the buffer fill
+      setTimeout(analyzeMusicBuffer, 2000);
+    }
+  }, [analyzeMusicBuffer, runAndroidMusicAnalysis]);
 
   const stopMusicAnalysis = useCallback(() => {
     musicAnalysisActiveRef.current = false;
     setMusicAnalysisActive(false);
+    // iOS interval
     if (musicIntervalRef.current) {
       clearInterval(musicIntervalRef.current);
       musicIntervalRef.current = null;
+    }
+    // Android: stop any in-progress dedicated recording
+    if (androidMusicRecordingRef.current) {
+      androidMusicRecordingRef.current.stopAndUnloadAsync().catch(() => {});
+      androidMusicRecordingRef.current = null;
     }
     // Clear music context from Leo's session
     if (lastMusicContextRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -692,12 +812,8 @@ export default function ConversationScreen() {
         style: "destructive",
         onPress: () => {
           Speech.stop();
-          // Stop music analysis
-          musicAnalysisActiveRef.current = false;
-          if (musicIntervalRef.current) {
-            clearInterval(musicIntervalRef.current);
-            musicIntervalRef.current = null;
-          }
+          // Stop music analysis (covers iOS interval + Android dedicated recording)
+          stopMusicAnalysis();
           // Stop mic before closing WS
           isMicActiveRef.current = false;
           if (currentRecordingRef.current) {
@@ -805,8 +921,8 @@ export default function ConversationScreen() {
               },
             ]}
           >
-            {/* Listening strip — shown when mic is active */}
-            {isMicActive && (
+            {/* Status strip — shown when mic is active or music analysis is running */}
+            {(isMicActive || musicAnalysisActive) && (
               <View style={styles.listeningStrip}>
                 <View style={[
                   styles.listenDot,
@@ -818,7 +934,9 @@ export default function ConversationScreen() {
                 ]}>
                   {musicAnalysisActive && musicContext
                     ? `♪ ${musicContext}`
-                    : "Leo is listening — speak naturally"}
+                    : isMicActive
+                      ? "Leo is listening — speak naturally"
+                      : "♪ Listening for music..."}
                 </Text>
               </View>
             )}
@@ -840,8 +958,8 @@ export default function ConversationScreen() {
                 />
               </Pressable>
 
-              {/* Music analysis toggle — only shown on iOS when mic is active */}
-              {Platform.OS === "ios" && isMicActive && (
+              {/* Music analysis toggle — shown on all platforms when session is connected */}
+              {status === "connected" && (
                 <Pressable
                   onPress={toggleMusicAnalysis}
                   style={({ pressed }) => [
