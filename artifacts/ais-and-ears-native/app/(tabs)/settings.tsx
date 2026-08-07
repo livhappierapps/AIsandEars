@@ -86,6 +86,15 @@ export default function SettingsTab() {
           onToggle={() => toggle("autoVision")}
           colors={colors}
         />
+        <Divider colors={colors} />
+        <SettingRow
+          icon={<Ionicons name="musical-notes-outline" size={20} color={colors.primary} />}
+          label="Music Analysis"
+          description="Let Leo hear ambient music — BPM, key, mood. Audio is never stored."
+          value={settings.musicAnalysis}
+          onToggle={() => toggle("musicAnalysis")}
+          colors={colors}
+        />
       </View>
 
       {/* Appearance */}

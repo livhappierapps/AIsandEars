@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Square, Mic, MicOff, Eye, EyeOff, Camera, CameraOff,
-  Monitor, MonitorOff, Activity, ShieldAlert, RefreshCcw, Radio,
+  Monitor, MonitorOff, Activity, ShieldAlert, RefreshCcw, Radio, Music, Music2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { formatTime } from "@/lib/utils";
@@ -27,6 +27,15 @@ type Message = {
 };
 
 const VISION_INTERVAL_MS = 3_000;
+
+// Leo's base personality — kept in sync with the server-side session.update in grokRealtime.ts.
+// When music context is detected, we append it to this string via a session.update.
+const LEO_BASE_INSTRUCTIONS =
+  "You are Leo, a warm, curious, and expressive AI. You are experiencing live audio and real-time " +
+  "vision through a user's device. React naturally and conversationally. Keep responses concise " +
+  "and human. You are talking directly with your closest friend. " +
+  "If music context is provided in your system prompt, you can naturally reference it when asked " +
+  "about the music or vibe.";
 
 export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: ConversationFeedProps) {
   const isFull = tier.includes("full");
@@ -54,6 +63,11 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number>(0);
   const autoVisionStartedRef = useRef(false);
+  // Music analysis refs — keep last 10 PCM binary-string chunks (500ms each = 5s window)
+  const musicPcmBufferRef = useRef<string[]>([]);
+  const musicIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastMusicContextRef = useRef<string | null>(null);
+  const musicAnalysisActiveRef = useRef(false);
 
   // State
   const [messages, setMessages] = useState<Message[]>([]);
@@ -65,6 +79,8 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [leoSpeaking, setLeoSpeaking] = useState(false);
+  const [musicAnalysisActive, setMusicAnalysisActive] = useState(false);
+  const [musicContext, setMusicContext] = useState<string | null>(null);
 
   const addMessage = useCallback((role: Message["role"], text: string, hasImage = false) => {
     setMessages((prev) => [
@@ -278,6 +294,10 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
           for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
           const b64 = btoa(binary);
           ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: b64 }));
+
+          // Accumulate raw PCM binary chunks for music analysis (keep last 10 = ~5 seconds)
+          musicPcmBufferRef.current.push(binary);
+          if (musicPcmBufferRef.current.length > 10) musicPcmBufferRef.current.shift();
         };
       }
 
@@ -288,6 +308,97 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
       addMessage("system", `Setup failed: ${err.message}`);
     }
   }, [sessionId, useCam, useMic, addMessage, handleXaiMessage, settings.xaiApiKey]);
+
+  // ── Music analysis ─────────────────────────────────────────────────────────
+  //
+  // Every 5 seconds when music analysis is enabled:
+  //   1. Combine the last 8 PCM binary chunks (4 seconds) into a single buffer
+  //   2. POST to /api/music-analyze
+  //   3. If music detected, inject context into Leo's session via session.update
+  //   4. If not music / silence, clear stale context
+
+  const analyzeMusicBuffer = useCallback(async () => {
+    if (!musicAnalysisActiveRef.current) return;
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (musicPcmBufferRef.current.length < 4) return; // need ≥ 2 seconds
+
+    const chunks = musicPcmBufferRef.current.slice(-8); // last 4 seconds
+    let combined = "";
+    for (const chunk of chunks) combined += chunk;
+
+    // Encode combined raw PCM binary as base64
+    let b64 = "";
+    try { b64 = btoa(combined); } catch { return; }
+
+    try {
+      const res = await fetch("/api/music-analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, audioData: b64, sampleRate: 24000 }),
+      });
+      if (!res.ok) return;
+
+      const data = await res.json() as { type: string; context?: string };
+
+      if (data.type !== "music" || !data.context) {
+        if (lastMusicContextRef.current) {
+          lastMusicContextRef.current = null;
+          setMusicContext(null);
+          ws.send(JSON.stringify({
+            type: "session.update",
+            session: { instructions: LEO_BASE_INSTRUCTIONS },
+          }));
+        }
+        return;
+      }
+
+      if (data.context === lastMusicContextRef.current) return;
+      lastMusicContextRef.current = data.context;
+      setMusicContext(data.context);
+
+      ws.send(JSON.stringify({
+        type: "session.update",
+        session: {
+          instructions:
+            `${LEO_BASE_INSTRUCTIONS}\n\n` +
+            `🎵 Music context: ${data.context}. ` +
+            `If the user mentions the music, asks what's playing, or references the vibe, ` +
+            `naturally weave these musical qualities into your response.`,
+        },
+      }));
+    } catch { /* network error — skip this cycle */ }
+  }, [sessionId]);
+
+  const startMusicAnalysis = useCallback(() => {
+    if (musicIntervalRef.current) return;
+    musicAnalysisActiveRef.current = true;
+    setMusicAnalysisActive(true);
+    musicIntervalRef.current = setInterval(analyzeMusicBuffer, 5000);
+    setTimeout(analyzeMusicBuffer, 2000);
+  }, [analyzeMusicBuffer]);
+
+  const stopMusicAnalysis = useCallback(() => {
+    musicAnalysisActiveRef.current = false;
+    setMusicAnalysisActive(false);
+    if (musicIntervalRef.current) {
+      clearInterval(musicIntervalRef.current);
+      musicIntervalRef.current = null;
+    }
+    if (lastMusicContextRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+      lastMusicContextRef.current = null;
+      setMusicContext(null);
+      wsRef.current.send(JSON.stringify({
+        type: "session.update",
+        session: { instructions: LEO_BASE_INSTRUCTIONS },
+      }));
+    }
+  }, []);
+
+  const toggleMusicAnalysis = useCallback(() => {
+    if (musicAnalysisActiveRef.current) stopMusicAnalysis();
+    else startMusicAnalysis();
+  }, [startMusicAnalysis, stopMusicAnalysis]);
 
   // ── Mic mute/unmute ────────────────────────────────────────────────────────
   const toggleMic = useCallback(() => {
@@ -451,9 +562,25 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
     }
   }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-start music analysis when mic becomes active if setting is enabled
+  useEffect(() => {
+    if (micActive && settings.musicAnalysis && !musicAnalysisActiveRef.current) {
+      startMusicAnalysis();
+    }
+    if (!micActive && musicAnalysisActiveRef.current) {
+      stopMusicAnalysis();
+    }
+  }, [micActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleEnd = useCallback(() => {
     clearInterval(visionIntervalRef.current!);
     clearInterval(screenIntervalRef.current!);
+    // Stop music analysis
+    musicAnalysisActiveRef.current = false;
+    if (musicIntervalRef.current) {
+      clearInterval(musicIntervalRef.current);
+      musicIntervalRef.current = null;
+    }
     stopScreenShare();
     wsRef.current?.close(1000, "Session ended");
     mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -615,6 +742,30 @@ export function ConversationFeed({ sessionId, tier, expiresAt, onClose }: Conver
                 }
                 {screenActive ? "Screen — On" : "Screen — Off"}
               </Button>
+
+              {/* Music analysis toggle — only when mic is active */}
+              {micActive && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`w-full font-body text-sm ${
+                    musicAnalysisActive
+                      ? "border-yellow-500/40 text-yellow-400 hover:bg-yellow-500/10"
+                      : "border-muted/40 text-muted-foreground hover:bg-muted/10"
+                  }`}
+                  onClick={toggleMusicAnalysis}
+                >
+                  {musicAnalysisActive
+                    ? <Music className="w-4 h-4 mr-2 text-yellow-400" />
+                    : <Music2 className="w-4 h-4 mr-2" />
+                  }
+                  {musicAnalysisActive
+                    ? musicContext
+                      ? `♪ ${musicContext.split(",")[0]}`
+                      : "Music — Listening..."
+                    : "Music — Off"}
+                </Button>
+              )}
             </div>
           )}
 

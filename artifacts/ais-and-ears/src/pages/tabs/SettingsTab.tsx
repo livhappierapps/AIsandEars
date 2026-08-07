@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { useSettings } from "@/context/SettingsContext";
-import { Moon, Sun, Mic, Video, MessageSquare, Eye, Info, Key } from "lucide-react";
+import { Moon, Sun, Mic, Video, MessageSquare, Eye, Info, Key, Music } from "lucide-react";
 
 interface SettingRowProps {
   icon: React.ReactNode;
@@ -79,6 +79,13 @@ export function SettingsTab() {
               description="Automatically send a camera frame to Leo every 3 seconds."
               checked={settings.autoVision}
               onCheckedChange={(v) => setSetting("autoVision", v)}
+            />
+            <SettingRow
+              icon={<Music className="w-4 h-4 text-primary" />}
+              label="Music Analysis"
+              description="Leo listens for ambient music — BPM, key, mood injected into context. Audio is never stored."
+              checked={settings.musicAnalysis}
+              onCheckedChange={(v) => setSetting("musicAnalysis", v)}
             />
           </div>
         </motion.section>

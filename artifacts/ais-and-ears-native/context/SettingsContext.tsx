@@ -24,6 +24,15 @@ export interface Settings {
    * Format: "xai-..." — get yours at console.x.ai
    */
   xaiApiKey: string;
+  /**
+   * Music Analysis — Leo's ears for ambient music
+   *
+   * When enabled, audio captured by the mic is periodically analyzed for
+   * musical content (BPM, key, mood). Detected music context is injected
+   * into Leo's session so he can reference what's playing.
+   * Audio is processed server-side and never stored.
+   */
+  musicAnalysis: boolean;
 }
 
 interface SettingsContextType {
@@ -38,6 +47,7 @@ const DEFAULTS: Settings = {
   autoVision: false,
   isDark: true,
   xaiApiKey: "",
+  musicAnalysis: false,
 };
 
 const STORAGE_KEY = "@aisears/settings";
