@@ -196,6 +196,13 @@ Mobile: expo-av WAV chunks (500ms, 24kHz, PCM16, strips 44B header) → WS /api/
 - ⚠️ App Store submission: Must add RevenueCat/StoreKit IAP for iOS purchases
 - **Boss needs to make the Apple IAP decision before App Store submission**
 
+## Launch Status — Aug 13 2026
+
+- **Android**: production AAB (versionCode 3) + preview APK built via EAS, pointing at `a-is-and-ears.replit.app`. Manual upload to Play Console (no google-service-account.json yet).
+- **iOS**: NOT submitted — pending RevenueCat/StoreKit IAP + Apple credentials (eas.json submit section still has placeholders). Do not fire iOS builds until IAP lands.
+- **⚠️ Hosting blocker discovered on launch day**: the Replit deployment was suspended Aug 6 (usage/billing) — `a-is-and-ears.replit.app` is down. Render service was never created (user's migration incomplete). No live API until the user either re-publishes on Replit or finishes the Render setup (DEPLOY.md).
+- **Submission zip**: `exports/AIsandEars-launch-2026-08-13.zip` — full source snapshot at submission state.
+
 ## Road Map
 
 ### Crown Jewel (in progress — separate repo)
