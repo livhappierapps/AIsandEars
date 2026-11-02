@@ -92,13 +92,20 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
     expiresAt,
   });
 
-  // APP_BASE_URL covers Render/Cloudflare; falls back to Replit vars for backwards compat
-  const rawBase =
-    process.env.APP_BASE_URL ??
-    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null) ??
-    (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]?.trim()}` : null) ??
-    "";
-  const domain = rawBase.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  // APP_BASE_URL covers Render/Cloudflare; falls back to Replit vars for
+  // backwards compat, then to the host this request came in on (so the URLs
+  // are never the broken "wss:///api/..." when no env var is set).
+  const configuredBase =
+    process.env.APP_BASE_URL ||
+    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "") ||
+    (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]?.trim()}` : "");
+  const forwardedProto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0]?.trim();
+  const requestBase = `${forwardedProto || req.protocol}://${req.get("host") ?? ""}`;
+  const base = (configuredBase || requestBase).replace(/\/$/, "");
+  const secure = !/^http:\/\//.test(base); // bare domains are treated as https
+  const domain = base.replace(/^https?:\/\//, "");
+  const wsScheme = secure ? "wss" : "ws";
+  const httpScheme = secure ? "https" : "http";
 
   logger.info(
     { sessionId: session.id, tier: resolvedTier, durationMinutes: resolvedDuration },
@@ -111,8 +118,8 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
     expiresAt: expiresAt.toISOString(),
     durationMinutes: resolvedDuration,
     // Plug these directly into your bridge app
-    wsUrl: `wss://${domain}/api/grok-live?sessionId=${session.id}`,
-    visionUrl: `https://${domain}/api/grok-vision`,
+    wsUrl: `${wsScheme}://${domain}/api/grok-live?sessionId=${session.id}`,
+    visionUrl: `${httpScheme}://${domain}/api/grok-vision`,
   });
 });
 
