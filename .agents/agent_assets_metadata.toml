@@ -11,6 +11,7 @@ id = "NR0RNELvXO5EtryS66-m5"
 uri = "file://ais-and-ears-source.zip"
 type = "unspecified"
 title = "AIs&Ears — Full Source Code"
+logical_id = "a85f2ea0-2ae2-4624-acf3-03a34e5ad703"
 
 [[outputs]]
 id = "PZUrNqLeD3B12jsusNXqY"
@@ -18,3 +19,18 @@ uri = "file://exports/AIsandEars-launch-2026-08-13.zip"
 type = "unspecified"
 title = "AIs&Ears — Full App (Launch Day Snapshot)"
 description = "Complete source of AIs&Ears at submission state — web, mobile, API server, docs. No secrets inside. Your backup + store submission record."
+logical_id = "20128c70-47ba-4615-a9c7-0092d54e0d3d"
+
+[[outputs]]
+id = "OLRN8h_ZdlL7XY_d_SAJm"
+uri = "file://research/notes.md"
+type = "text"
+title = "AIs & Ears research notes"
+description = "Research scope and a checklist of the questions this brief will answer."
+logical_id = "32db41a0-bc51-44cb-888a-5948bc28c601"
+content_hash = "sha256:48c7b4771c7ec6b472fa8b03521dffdab1e225ebf1c3fe7ded7de8647716a3d0"
+size = 2027
+mtime_ms = 1793691545131
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/32db41a0-bc51-44cb-888a-5948bc28c601/a24ab41e-ab62-4fe6-a081-006025f9ca93"
+storage_version_token = "1793691555004549"
+content_type = "text/markdown"
