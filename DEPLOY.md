@@ -72,6 +72,12 @@ Add each of these one at a time. Click **Add Environment Variable** for each:
 | `SESSION_SECRET` | Any long random string (like a password) |
 | `BRIDGE_API_KEY` | Same value as your Replit `BRIDGE_API_KEY` secret |
 | `EXPO_TOKEN` | Your Expo access token |
+| `APP_BASE_URL` | *(optional)* Public API URL, e.g. `https://ais-and-ears-api.onrender.com`. If unset, bridge URLs use the request host. |
+| `XAI_VOICE_MODEL` | *(optional)* Defaults to `grok-voice-latest` |
+| `XAI_VOICE` | *(optional)* Defaults to `ara` (others: eve, leo, rex, sal) |
+| `XAI_VISION_MODEL` | *(optional)* Defaults to `grok-4.3` |
+
+See `artifacts/api-server/.env.example` for the full list.
 
 Click **Save Changes** when all are added.
 

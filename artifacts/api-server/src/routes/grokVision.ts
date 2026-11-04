@@ -45,7 +45,9 @@ const MAX_IMAGE_B64_CHARS = 2_800_000;
 
 // Vision model — pinned release for consistency.
 // Note: xAI chat/completions is deprecated upstream; migrate to Responses API when stable.
-const VISION_MODEL = "grok-2-vision-1212";
+// grok-2-vision-1212 is no longer listed in xAI's model catalog; current
+// Grok 4.x chat models accept image input. Override with XAI_VISION_MODEL.
+const VISION_MODEL = process.env.XAI_VISION_MODEL || "grok-4.3";
 
 router.post("/grok-vision", async (req, res): Promise<void> => {
   const { sessionId, imageData, prompt, isFirstFrame, userKey } = req.body;

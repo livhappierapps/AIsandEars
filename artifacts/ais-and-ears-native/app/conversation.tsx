@@ -15,7 +15,9 @@
  */
 
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+// SDK 54's expo-file-system moved readAsStringAsync/deleteAsync to the
+// "/legacy" entry point; calling them from the root import throws at runtime.
+import * as FileSystem from "expo-file-system/legacy";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -72,6 +74,32 @@ interface ChatMessage {
 // Android: expo-av cannot output raw PCM16 — voice input is iOS-only for now.
 
 const WAV_HEADER_BYTES = 44;
+
+/**
+ * Return the PCM payload of a WAV file held in a binary string.
+ * iOS often writes extra chunks (e.g. FLLR padding) before "data", so the
+ * header is not always 44 bytes — walk the RIFF chunks to find it.
+ */
+function extractWavPcm(binary: string): string {
+  const u32 = (o: number) =>
+    (binary.charCodeAt(o) | (binary.charCodeAt(o + 1) << 8) |
+      (binary.charCodeAt(o + 2) << 16) | (binary.charCodeAt(o + 3) << 24)) >>> 0;
+  if (binary.slice(0, 4) !== "RIFF" || binary.slice(8, 12) !== "WAVE") {
+    return binary.slice(WAV_HEADER_BYTES);
+  }
+  let offset = 12;
+  while (offset + 8 <= binary.length) {
+    const id = binary.slice(offset, offset + 4);
+    const size = u32(offset + 4);
+    const body = offset + 8;
+    if (id === "data") {
+      const end = size === 0 || body + size > binary.length ? binary.length : body + size;
+      return binary.slice(body, end);
+    }
+    offset = body + size + (size % 2);
+  }
+  return binary.slice(WAV_HEADER_BYTES);
+}
 
 const MIC_RECORDING_OPTIONS: Audio.RecordingOptions = {
   android: {
@@ -207,18 +235,16 @@ export default function ConversationScreen() {
       setStatus("connected");
 
       // Configure session:
-      //   - modalities: ["text"] — Leo responds in text, expo-speech reads it aloud
+      //   - Leo replies with audio + transcript; we display the transcript and
+      //     expo-speech reads it aloud (raw audio playback is a future phase)
       //   - input_audio_format: "pcm16" — we stream raw PCM16 from the mic
       //   - server_vad — xAI detects when user stops speaking (no manual commit needed)
       //   - silence_duration_ms: 700 — extra 100ms vs web to absorb mobile network jitter
       ws.send(JSON.stringify({
         type: "session.update",
         session: {
-          modalities: ["text"],
           input_audio_format: "pcm16",
           instructions: BASE_INSTRUCTIONS,
-          temperature: 0.85,
-          max_response_output_tokens: 200,
           turn_detection: {
             type: "server_vad",
             threshold: 0.5,
@@ -290,6 +316,8 @@ export default function ConversationScreen() {
   // ── Server event handler ─────────────────────────────────────────────────
   const handleServerEvent = useCallback((msg: Record<string, unknown>) => {
     switch (msg.type) {
+      // Leo answers with audio + a transcript; we show/speak the transcript.
+      case "response.audio_transcript.delta":
       case "response.text.delta": {
         const delta = msg.delta as string;
         const sid = streamingIdRef.current;
@@ -342,9 +370,19 @@ export default function ConversationScreen() {
       case "input_audio_buffer.committed":
         break;
 
-      case "error":
-        setStatus("error");
+      case "error": {
+        // Most realtime API errors are recoverable (the socket stays open), so
+        // surface them instead of tearing down the whole conversation. A fatal
+        // problem closes the socket and onclose sets the error state.
+        const err = msg.error as { message?: string } | undefined;
+        const text = err?.message ?? (msg.message as string | undefined) ?? "Something went wrong";
+        setMessages((prev) => [
+          ...prev,
+          { id: genId(), role: "leo", text: `⚠️ ${text}`, isStreaming: false, timestamp: new Date() },
+        ]);
+        setIsSending(false);
         break;
+      }
 
       default:
         break;
@@ -412,8 +450,8 @@ export default function ConversationScreen() {
 
         // Decode → skip WAV header → extract raw PCM16 → re-encode
         const binary = atob(base64);
-        if (binary.length > WAV_HEADER_BYTES) {
-          const pcmBinary = binary.slice(WAV_HEADER_BYTES);
+        const pcmBinary = extractWavPcm(binary);
+        if (pcmBinary.length > 0) {
           const pcm16Base64 = btoa(pcmBinary);
 
           wsRef.current.send(JSON.stringify({
