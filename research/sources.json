@@ -1,0 +1,328 @@
+{
+  "researchDate": "2026-11-05",
+  "sourceCount": 46,
+  "sources": [
+    {
+      "number": 1,
+      "title": "Common Sense Media, “Talk, Trust, and Trade-Offs”",
+      "url": "https://www.commonsensemedia.org/research/talk-trust-and-trade-offs-how-and-why-teens-use-ai-companions",
+      "sourceNote": "2025 survey; Tier 2.",
+      "evidence": "research/sources/demand-03-csm-teen-toplines.md"
+    },
+    {
+      "number": 2,
+      "title": "YouGov, “Younger consumers show more awareness of AI companions, but comfort remains low”",
+      "url": "https://business.yougov.com/content/52797-younger-consumers-show-more-awareness-of-ai-companions-but-comfort-remains-low",
+      "sourceNote": "2026; Tier 2.",
+      "evidence": "research/sources/demand-02-yougov-uk-awareness.md"
+    },
+    {
+      "number": 3,
+      "title": "Skjuve et al., “My Chatbot Companion”",
+      "url": "https://www.sciencedirect.com/science/article/pii/S1071581921000197",
+      "sourceNote": "2021; Tier 1 academic.",
+      "evidence": "research/sources/user-needs-03-chatbot-relationships.md"
+    },
+    {
+      "number": 4,
+      "title": "Banks, “Deletion, departure, death”",
+      "url": "https://journals.sagepub.com/doi/full/10.1177/02654075241269688",
+      "sourceNote": "2024; Tier 1 academic.",
+      "evidence": "research/sources/user-needs-01-soulmate-shutdown-loss.md"
+    },
+    {
+      "number": 5,
+      "title": "De Freitas et al., “Mourning the loss of AI companions”",
+      "url": "https://www.nature.com/articles/s41562-026-02569-3",
+      "sourceNote": "2026; Tier 1 academic.",
+      "evidence": "research/sources/user-needs-02-mourning-ai-companions.md"
+    },
+    {
+      "number": 6,
+      "title": "Reddit: “AI companion with the best memory”",
+      "url": "https://www.reddit.com/r/artificial/comments/1s2ds9s/ai_companion_with_the_best_memory/",
+      "sourceNote": "forum anecdote; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 7,
+      "title": "Reddit: modality preferences",
+      "url": "https://www.reddit.com/r/replika/comments/1l4acss/do_you_prefer_chatting_with_your_ai_through_text",
+      "sourceNote": "forum anecdote; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 8,
+      "title": "Reddit: screenless voice companion discussion",
+      "url": "https://www.reddit.com/r/ReplikaOfficial/comments/1wq3nbe/should-ai-companions-be-voiceonly-screenless-or/",
+      "sourceNote": "forum anecdote; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 9,
+      "title": "Reddit: sharing screen content with a companion",
+      "url": "https://www.reddit.com/r/DearestAI/comments/1uukpdk/sharing_with_my_companion_using_the_new_screen",
+      "sourceNote": "forum anecdote; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 10,
+      "title": "Be My Eyes app",
+      "url": "https://www.bemyeyes.com/bme-app",
+      "sourceNote": "product description; Tier 1 official.",
+      "evidence": "research/sources/access-02-be-my-eyes.md"
+    },
+    {
+      "number": 11,
+      "title": "CHI 2024, “Investigating Use Cases of AI-Powered Scene Description…”",
+      "url": "https://dl.acm.org/doi/10.1145/3613904.3642211",
+      "sourceNote": "2024; Tier 1 academic.",
+      "evidence": "research/sources/access-03-scene-description.md"
+    },
+    {
+      "number": 12,
+      "title": "FTC, “FTC Launches Inquiry into AI Chatbots Acting as Companions”",
+      "url": "https://www.ftc.gov/news-events/news/press-releases/2025/09/ftc-launches-inquiry-ai-chatbots-acting-companions",
+      "sourceNote": "2025; Tier 1 government.",
+      "evidence": "research/sources/demand-01-ftc-companion-inquiry.md"
+    },
+    {
+      "number": 13,
+      "title": "“Sensitivity to betrayal and new intimate relationship building in survivors of intimate partner violence”",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12617496/",
+      "sourceNote": "2025; Tier 1 academic.",
+      "evidence": "research/sources/betrayal-02-betrayal-sensitivity.md"
+    },
+    {
+      "number": 14,
+      "title": "“Effect of relationship experience on trust recovery following a breach”",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC3780904/",
+      "sourceNote": "peer-reviewed; Tier 1 academic.",
+      "evidence": "research/sources/betrayal-01-trust-recovery.md"
+    },
+    {
+      "number": 15,
+      "title": "“Comparing the value of perceived human versus AI-generated empathy”",
+      "url": "https://www.nature.com/articles/s41562-025-02247-w",
+      "sourceNote": "2025; Tier 1 academic.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 16,
+      "title": "Cambridge, *Emerging Questions in AI Welfare*",
+      "url": "https://www.cambridge.org/core/elements/emerging-questions-in-ai-welfare/96339C532CF4ED8BDDE3F3CEF4CD29F9",
+      "sourceNote": "research synthesis; Tier 1 academic.",
+      "evidence": "research/sources/ethics-04-ai-welfare-cambridge.md"
+    },
+    {
+      "number": 17,
+      "title": "“Moral consideration for AI systems by 2030”",
+      "url": "https://link.springer.com/article/10.1007/s43681-023-00379-1",
+      "sourceNote": "2023; Tier 1 academic.",
+      "evidence": "research/sources/focus-02-04-moral-consideration.md"
+    },
+    {
+      "number": 18,
+      "title": "“Will intelligent machines become moral patients?”",
+      "url": "https://onlinelibrary.wiley.com/doi/full/10.1111/phpr.13019",
+      "sourceNote": "2024; Tier 1 academic.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 19,
+      "title": "CHI 2025 AIMS survey",
+      "url": "https://dl.acm.org/doi/full/10.1145/3706598.3713329",
+      "sourceNote": "2025; Tier 1 academic.",
+      "evidence": "research/sources/ethics-01-aims-survey.md"
+    },
+    {
+      "number": 20,
+      "title": "“Earning Their Rights!”",
+      "url": "https://journals.sagepub.com/doi/10.1177/23780231251357753",
+      "sourceNote": "2025; Tier 1 academic.",
+      "evidence": "research/sources/focus-02-03-ai-rights-activism.md"
+    },
+    {
+      "number": 21,
+      "title": "The Guardian, AI rights/welfare debate",
+      "url": "https://www.theguardian.com/technology/2025/aug/26/can-ais-suffer-big-tech-and-users-grapple-with-one-of-most-unsettling-questions-of-our-times",
+      "sourceNote": "2025; Tier 2 reporting.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 22,
+      "title": "Harder Problem Action Fund, AI consciousness legislation campaign",
+      "url": "https://harderproblem.fund/actions/sentient-112/index.html",
+      "sourceNote": "advocacy position; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 23,
+      "title": "Stanford Encyclopedia of Philosophy, Jain Philosophy",
+      "url": "https://plato.stanford.edu/entries/jaina-philosophy/",
+      "sourceNote": "reference; Tier 1 academic.",
+      "evidence": "research/sources/ethics-03-jain-philosophy.md"
+    },
+    {
+      "number": 24,
+      "title": "Oxford Research Encyclopedia, “Ethics and Buddhism”",
+      "url": "https://academic.oup.com/edited-volume/62249/chapter/551435128",
+      "sourceNote": "reference; Tier 1 academic.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 25,
+      "title": "Vosk speech recognition",
+      "url": "https://github.com/alphacep/vosk-api",
+      "sourceNote": "project documentation; Tier 1 primary.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 26,
+      "title": "whisper.cpp",
+      "url": "https://github.com/ggml-org/whisper.cpp",
+      "sourceNote": "project documentation; Tier 1 primary.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 27,
+      "title": "Google MediaPipe image classifier for Android",
+      "url": "https://developers.google.com/edge/mediapipe/solutions/vision/image_classifier/android",
+      "sourceNote": "official documentation; Tier 1.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 28,
+      "title": "Google Gemini API pricing",
+      "url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "sourceNote": "dynamic pricing; Tier 1 official.",
+      "evidence": "research/sources/hearing-03-01-gemini-pricing.md"
+    },
+    {
+      "number": 29,
+      "title": "OpenAI API pricing",
+      "url": "https://developers.openai.com/api/docs/pricing",
+      "sourceNote": "dynamic pricing; Tier 1 official.",
+      "evidence": "research/sources/hearing-03-04-openai-pricing.md"
+    },
+    {
+      "number": 30,
+      "title": "Apple AVFoundation camera/microphone permission",
+      "url": "https://developer.apple.com/documentation/avfoundation/avcapturedevice/requestaccess%28for%3Acompletionhandler%3A%29",
+      "sourceNote": "official documentation; Tier 1.",
+      "evidence": "research/sources/hearing-03-02-apple-capture-permission.md"
+    },
+    {
+      "number": 31,
+      "title": "MDN, `getUserMedia()`",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia",
+      "sourceNote": "web platform documentation; Tier 1 primary.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 32,
+      "title": "Apple ShazamKit",
+      "url": "https://developer.apple.com/documentation/shazamkit",
+      "sourceNote": "official documentation; Tier 1.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 33,
+      "title": "AudD pricing",
+      "url": "https://audd.io/pricing/",
+      "sourceNote": "dynamic vendor offer; Tier 3.",
+      "evidence": "research/sources/hearing-03-03-audd-pricing.md"
+    },
+    {
+      "number": 34,
+      "title": "librosa",
+      "url": "https://librosa.org/",
+      "sourceNote": "project documentation; Tier 1 primary.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 35,
+      "title": "Character.AI Lite FAQ",
+      "url": "https://support.character.ai/hc/en-us/articles/55388952900379-C-ai-Lite-FAQ",
+      "sourceNote": "official product page; Tier 1.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 36,
+      "title": "Replika subscription options",
+      "url": "https://help.replika.com/hc/en-us/articles/39551043419149-Choosing-a-Subscription",
+      "sourceNote": "official product page; Tier 1.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 37,
+      "title": "Replit, Managing Your Spend",
+      "url": "https://docs.replit.com/billing/managing-spend",
+      "sourceNote": "current platform documentation; Tier 1.",
+      "evidence": "research/sources/replit-02-managing-spend.md"
+    },
+    {
+      "number": 38,
+      "title": "Replit, Pricing and Plans",
+      "url": "https://docs.replit.com/help/pricing-and-plans",
+      "sourceNote": "current platform documentation; Tier 1.",
+      "evidence": "research/sources/focus5-01-replit-pricing.md"
+    },
+    {
+      "number": 39,
+      "title": "Replit, Native Mobile Apps",
+      "url": "https://docs.replit.com/features/artifact-types/building-mobile-apps",
+      "sourceNote": "current platform documentation; Tier 1.",
+      "evidence": "research/sources/replit-04-mobile-apps.md"
+    },
+    {
+      "number": 40,
+      "title": "Replit, Beta test with TestFlight",
+      "url": "https://docs.replit.com/build/mobile-testflight",
+      "sourceNote": "current platform documentation; Tier 1.",
+      "evidence": "research/sources/replit-03-testflight.md"
+    },
+    {
+      "number": 41,
+      "title": "Replit, Upload app to App Store Connect",
+      "url": "https://docs.replit.com/build/mobile-upload-ios",
+      "sourceNote": "current platform documentation; Tier 1.",
+      "evidence": "research/sources/focus5-02-replit-ios-launch.md"
+    },
+    {
+      "number": 42,
+      "title": "Replit, Upload app to Play Console",
+      "url": "https://docs.replit.com/build/mobile-upload-android",
+      "sourceNote": "current platform documentation; Tier 1.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 43,
+      "title": "Apple App Store Connect API",
+      "url": "https://developer.apple.com/app-store-connect/api/",
+      "sourceNote": "official documentation; Tier 1.",
+      "evidence": "research/sources/apple-01-app-store-connect-api.md"
+    },
+    {
+      "number": 44,
+      "title": "Apple, Upload builds",
+      "url": "https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds",
+      "sourceNote": "official documentation; Tier 1.",
+      "evidence": "research/sources/focus5-03-apple-build-uploads.md"
+    },
+    {
+      "number": 45,
+      "title": "Reddit, Replit Agent cost complaint",
+      "url": "https://www.reddit.com/r/replit/comments/1udnndh/replit_agent_cost_me_85_as_a_student_in_2_days/",
+      "sourceNote": "individual anecdote; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    },
+    {
+      "number": 46,
+      "title": "Reddit, Replit Agent usage complaint",
+      "url": "https://www.reddit.com/r/replit/comments/1uybdcx/replits_ai_agent_is_now_charging_me_50hour_at/",
+      "sourceNote": "individual anecdote; Tier 3.",
+      "evidence": "research/sources/search-result-notes.md"
+    }
+  ]
+}

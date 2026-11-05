@@ -1,6 +1,6 @@
 Source: https://business.yougov.com/content/52797-younger-consumers-show-more-awareness-of-ai-companions-but-comfort-remains-low
 Title: Younger consumers show more awareness of AI companions, but comfort remains low
-Fetched: 2026-11-03T07:40:15.737Z
+Fetched: 2026-11-05T21:34:41.247Z
 
 AI companions have emerged as one of the many manifestations of the generative AI boom – although it’s been a particularly niche and divisive one. While some have expressed concerns about the impact of these virtual companions, some studies have indicated that these tools can help alleviate loneliness and provide emotional support.
 

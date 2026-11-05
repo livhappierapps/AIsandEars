@@ -1,5 +1,5 @@
 # Progress
 
-- 2026-11-03: Scoped the user's request as a research brief for AIs & Ears; no implementation changes.
-- 2026-11-03: Created a five-area deep research plan, began multi-source discovery, saved initial academic, Replit, and Apple source evidence. Five focused research jobs are running.
-- Error: direct fetch of Replit AI billing page returned an opaque error; spend-management page and Replit docs search provided an alternate source. OUP article fetch exposed no study findings; seek an accessible abstract or leave the claim out.
+- 2026-11-05: Scoped the user's request as a sourced research brief for AIs & Ears; no application code changes.
+- 2026-11-05: Completed five parallel research areas, cross-checked claims, saved fetched pages and search-result notes, and drafted a 46-reference report.
+- Research caveats recorded: forum posts are anecdotes; AI subjective experience is not established; pricing and release flows can change; the OUP loneliness article did not expose findings and was not used to support an effect claim.

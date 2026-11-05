@@ -4,10 +4,10 @@
 Create a sourced, balanced research brief to guide AIs & Ears product, technology, ethics, and launch decisions.
 
 ## Phases
-- [ ] Scope and source plan
-- [ ] Gather and save source evidence across five focus areas
-- [ ] Cross-check claims, gaps, and current platform capabilities
-- [ ] Draft, verify citations, and deliver the report
+- [x] Scope and source plan
+- [x] Gather and save source evidence across five focus areas
+- [x] Cross-check claims, gaps, and current platform capabilities
+- [x] Draft, verify citations, and deliver the report
 
 ## Constraints
 - No app/code changes.

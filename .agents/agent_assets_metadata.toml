@@ -34,3 +34,17 @@ mtime_ms = 1793691545131
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/32db41a0-bc51-44cb-888a-5948bc28c601/a24ab41e-ab62-4fe6-a081-006025f9ca93"
 storage_version_token = "1793691555004549"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "2JmJmvZ5bxR2Ja5EEXBKP"
+uri = "file://research/ai-companions-eyes-ears-brief.md"
+type = "text"
+title = "AIs & Ears research brief"
+description = "A cited 46-reference brief on companion-user needs, human attachment, AI welfare debates, low-cost audio/vision/music, ethical marketing, and Replit/App Store automation."
+logical_id = "e1b809c6-43e5-4b4d-ab76-d09050bb8549"
+content_hash = "sha256:5003801221f83e50d6535254a32dc2ff72edab45ac619c918749e31a09ee3972"
+size = 23732
+mtime_ms = 1793914755172
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/e1b809c6-43e5-4b4d-ab76-d09050bb8549/a367664c-f799-437c-a124-fc85586869a1"
+storage_version_token = "1793914771082678"
+content_type = "text/markdown"
