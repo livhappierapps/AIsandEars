@@ -5,7 +5,12 @@ import crypto from "crypto";
 
 const router: IRouter = Router();
 
-const VALID_TIERS = new Set(["audio-monthly", "full-monthly", "audio-session", "full-session"]);
+const VALID_TIERS = new Set([
+  "audio-monthly",
+  "full-monthly",
+  "audio-session",
+  "full-session",
+]);
 
 // Whop plan IDs — set via env vars after running seedWhop
 const WHOP_PLAN_IDS: Record<string, string | undefined> = {
@@ -23,7 +28,23 @@ function getBaseUrl() {
   return domain ? `https://${domain}` : "http://localhost:80";
 }
 
-const ALLOWED_CUSTOM_PREFIXES = ["ais-and-ears-native://"];
+// Compare parsed origins, not string prefixes (app.example.attacker.test is not app.example).
+function allowedReturnUrl(value: unknown, baseUrl: string): boolean {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password) return false;
+    if (url.protocol === "ais-and-ears-native:") return true;
+    const base = new URL(baseUrl);
+    const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    return (
+      url.origin === base.origin &&
+      (url.protocol === "https:" || (local && url.protocol === "http:"))
+    );
+  } catch {
+    return false;
+  }
+}
 
 // POST /api/checkout
 // Body: { tier, successUrl?, cancelUrl? }
@@ -49,33 +70,32 @@ router.post("/checkout", async (req, res): Promise<void> => {
   if (!planId) {
     res.status(503).json({
       error: "payment_unavailable",
-      message: "Whop plan not configured. Check WHOP_PLAN_* environment variables.",
+      message:
+        "Whop plan not configured. Check WHOP_PLAN_* environment variables.",
     });
     return;
   }
 
   const baseUrl = getBaseUrl();
 
-  if (customSuccessUrl) {
-    const isAllowed =
-      customSuccessUrl.startsWith(baseUrl) ||
-      ALLOWED_CUSTOM_PREFIXES.some((p) => customSuccessUrl.startsWith(p));
-    if (!isAllowed) {
-      res.status(400).json({ error: "Invalid successUrl scheme" });
-      return;
-    }
+  if (
+    customSuccessUrl !== undefined &&
+    !allowedReturnUrl(customSuccessUrl, baseUrl)
+  ) {
+    res.status(400).json({ error: "Invalid successUrl origin or scheme" });
+    return;
   }
-  if (customCancelUrl) {
-    const isAllowed =
-      customCancelUrl.startsWith(baseUrl) ||
-      ALLOWED_CUSTOM_PREFIXES.some((p) => customCancelUrl.startsWith(p));
-    if (!isAllowed) {
-      res.status(400).json({ error: "Invalid cancelUrl scheme" });
-      return;
-    }
+  if (
+    customCancelUrl !== undefined &&
+    !allowedReturnUrl(customCancelUrl, baseUrl)
+  ) {
+    res.status(400).json({ error: "Invalid cancelUrl origin or scheme" });
+    return;
   }
 
-  const redirectUrl = customSuccessUrl ?? `${baseUrl}/?success=true&tier=${encodeURIComponent(tier)}`;
+  const redirectUrl =
+    customSuccessUrl ??
+    `${baseUrl}/?success=true&tier=${encodeURIComponent(tier)}`;
 
   try {
     const whop = await getWhopClient();
@@ -102,7 +122,10 @@ router.post("/checkout", async (req, res): Promise<void> => {
 // Called after Whop redirects back with membership_id in query params.
 // Verifies with Whop that the membership is valid before creating a DB session.
 router.get("/checkout/verify", async (req, res): Promise<void> => {
-  const { membership_id, tier } = req.query as { membership_id?: string; tier?: string };
+  const { membership_id, tier } = req.query as {
+    membership_id?: string;
+    tier?: string;
+  };
 
   if (!membership_id || !tier) {
     res.status(400).json({ error: "membership_id and tier are required" });
@@ -126,6 +149,19 @@ router.get("/checkout/verify", async (req, res): Promise<void> => {
       return;
     }
 
+    // Never grant a tier chosen by the caller without matching the paid plan.
+    const expectedPlanId = WHOP_PLAN_IDS[tier];
+    if (!expectedPlanId) {
+      res.status(503).json({ error: "Payment plan is not configured" });
+      return;
+    }
+    if (membership.plan?.id !== expectedPlanId) {
+      res
+        .status(403)
+        .json({ error: "Membership does not cover the requested tier" });
+      return;
+    }
+
     // Check we don't already have a session for this membership
     let existing = await storage.getSessionByPaymentId(membership_id);
     if (!existing) {
@@ -134,7 +170,9 @@ router.get("/checkout/verify", async (req, res): Promise<void> => {
         id: crypto.randomUUID(),
         stripeSessionId: membership_id, // DB column kept as-is; stores Whop membership ID
         tier,
-        expiresAt: isTimedSession ? new Date(Date.now() + 30 * 60 * 1000) : null,
+        expiresAt: isTimedSession
+          ? new Date(Date.now() + 30 * 60 * 1000)
+          : null,
         used: false,
       });
     }

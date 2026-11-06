@@ -17,10 +17,11 @@
         "buildType": "apk"
       },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "image": "macos-sequoia-15.6-xcode-26.2"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "a-is-and-ears.replit.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://aisandears.onrender.com"
       }
     },
     "production": {
@@ -29,10 +30,11 @@
         "buildType": "app-bundle"
       },
       "ios": {
-        "simulator": false
+        "simulator": false,
+        "image": "macos-sequoia-15.6-xcode-26.2"
       },
       "env": {
-        "EXPO_PUBLIC_DOMAIN": "a-is-and-ears.replit.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://aisandears.onrender.com"
       }
     }
   },

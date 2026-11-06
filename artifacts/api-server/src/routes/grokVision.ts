@@ -45,7 +45,9 @@ const MAX_IMAGE_B64_CHARS = 2_800_000;
 
 // Vision model — pinned release for consistency.
 // Note: xAI chat/completions is deprecated upstream; migrate to Responses API when stable.
-const VISION_MODEL = "grok-2-vision-1212";
+// grok-2-vision-1212 is no longer listed in xAI's model catalog; current
+// Grok 4.x chat models accept image input. Override with XAI_VISION_MODEL.
+const VISION_MODEL = process.env.XAI_VISION_MODEL || "grok-4.3";
 
 router.post("/grok-vision", async (req, res): Promise<void> => {
   const { sessionId, imageData, prompt, isFirstFrame, userKey } = req.body;
@@ -60,7 +62,11 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
     return;
   }
   if (typeof imageData !== "string" || !DATA_URL_RE.test(imageData)) {
-    res.status(400).json({ error: "imageData must be a valid base64 data URL (jpeg/png/webp/gif)" });
+    res
+      .status(400)
+      .json({
+        error: "imageData must be a valid base64 data URL (jpeg/png/webp/gif)",
+      });
     return;
   }
   if (imageData.length > MAX_IMAGE_B64_CHARS) {
@@ -81,11 +87,21 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
       return;
     }
 
+    if (!["full-session", "full-monthly"].includes(session.tier)) {
+      res
+        .status(403)
+        .json({
+          error: "Vision requires a full-session or full-monthly entitlement",
+        });
+      return;
+    }
+
     // ── Key resolution (BYOK) ─────────────────────────────────────────────
     // User-supplied key wins over server key. Never logged or stored.
-    const xaiKey = (typeof userKey === "string" && userKey.trim())
-      ? userKey.trim()
-      : process.env.XAI_API_KEY;
+    const xaiKey =
+      typeof userKey === "string" && userKey.trim()
+        ? userKey.trim()
+        : process.env.XAI_API_KEY;
 
     if (!xaiKey) {
       res.status(503).json({ error: "xAI API key not configured on server" });
@@ -106,6 +122,7 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
     // The image is sent inline as a base64 data URL (detail: "low" saves tokens).
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
+      signal: AbortSignal.timeout(30_000),
       headers: {
         Authorization: `Bearer ${xaiKey}`,
         "Content-Type": "application/json",
@@ -120,8 +137,8 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
               {
                 type: "image_url",
                 image_url: {
-                  url: imageData,  // the full "data:image/jpeg;base64,..." string
-                  detail: "low",   // "low" = faster + cheaper; "high" = more detail
+                  url: imageData, // the full "data:image/jpeg;base64,..." string
+                  detail: "low", // "low" = faster + cheaper; "high" = more detail
                 },
               },
               { type: "text", text: userPrompt },
@@ -138,9 +155,18 @@ router.post("/grok-vision", async (req, res): Promise<void> => {
       // Classify common upstream failures so they're queryable in logs
       const isQuota = response.status === 429;
       const isTimeout = response.status === 504 || response.status === 408;
-      const failureReason = isQuota ? "quota_exceeded" : isTimeout ? "upstream_timeout" : "upstream_error";
+      const failureReason = isQuota
+        ? "quota_exceeded"
+        : isTimeout
+          ? "upstream_timeout"
+          : "upstream_error";
       req.log?.error(
-        { sessionId, upstreamStatus: response.status, failureReason, responseText: text.slice(0, 500) },
+        {
+          sessionId,
+          upstreamStatus: response.status,
+          failureReason,
+          responseText: text.slice(0, 500),
+        },
         "xAI Vision API error",
       );
       logger.error(

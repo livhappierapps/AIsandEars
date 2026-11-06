@@ -1,4 +1,10 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 export interface AppSettings {
   theme: "dark" | "light";
@@ -22,7 +28,7 @@ export interface AppSettings {
    *
    * When enabled, microphone audio is periodically sent to the server for
    * music detection. BPM, key, and mood tags are injected into Leo's context
-   * so he can reference what's playing. Audio is never stored.
+   * so he can reference what's playing. Audio is not retained; compressed clips use temporary server files during decoding.
    */
   musicAnalysis: boolean;
 }
@@ -39,7 +45,10 @@ const DEFAULTS: AppSettings = {
 
 interface SettingsContextValue {
   settings: AppSettings;
-  setSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  setSetting: <K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K],
+  ) => void;
 }
 
 const SettingsContext = createContext<SettingsContextValue>({
@@ -70,7 +79,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [settings]);
 
-  const setSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+  const setSetting = <K extends keyof AppSettings>(
+    key: K,
+    value: AppSettings[K],
+  ) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
 

@@ -1,3 +1,4 @@
+import { extractPcm16Wav } from "@workspace/media-utils";
 /**
  * musicAnalyze.ts — Server-side music analysis endpoint
  *
@@ -10,7 +11,7 @@
  *
  * SECURITY:
  *   - Session must exist and not be expired
- *   - Audio buffers are processed in-memory and never persisted
+ *   - Compressed clips use private temporary files, deleted in finally after decoding
  *   - Hard cap on buffer size (~5MB base64 ≈ ~3.7MB audio)
  *
  * ALGORITHM:
@@ -59,11 +60,14 @@ function isWAV(buf: Buffer): boolean {
 function ffmpegFormatHint(hint?: string): string | null {
   if (!hint) return null;
   const lower = hint.toLowerCase();
-  if (lower === "m4a" || lower === "aac" || lower === "mp4") return "mp4";
-  if (lower === "amr" || lower === "3gp" || lower === "3gpp") return "amr";
+  if (lower === "m4a" || lower === "mp4" || lower === "3gp" || lower === "3gpp")
+    return "mp4";
+  if (lower === "aac") return "aac";
+  if (lower === "amr") return "amr";
   if (lower === "ogg" || lower === "opus") return "ogg";
-  if (lower === "wav") return null; // handled natively
-  return lower; // pass through as-is
+  if (lower === "webm") return "webm";
+  if (lower === "wav" || lower === "pcm16") return null;
+  throw new Error("Unsupported audio format");
 }
 
 // ── FFmpeg decode to PCM WAV ──────────────────────────────────────────────────
@@ -75,24 +79,44 @@ function ffmpegFormatHint(hint?: string): string | null {
  *
  * Throws if ffmpeg fails or produces no output.
  */
-async function decodeAudioToWAV(inputBuffer: Buffer, inputFormat: string): Promise<Buffer> {
+async function decodeAudioToWAV(
+  inputBuffer: Buffer,
+  inputFormat: string,
+): Promise<Buffer> {
   const id = crypto.randomBytes(8).toString("hex");
   // Use the format hint as the file extension so ffmpeg auto-detects the container
   const ext = inputFormat === "mp4" ? "m4a" : inputFormat;
   const inputPath = path.join(os.tmpdir(), `leo-music-in-${id}.${ext}`);
   const outputPath = path.join(os.tmpdir(), `leo-music-out-${id}.wav`);
 
-  await fs.promises.writeFile(inputPath, inputBuffer);
+  await fs.promises.writeFile(inputPath, inputBuffer, {
+    mode: 0o600,
+    flag: "wx",
+  });
 
   try {
-    await execFileAsync(FFMPEG_BIN, [
-      "-y",                    // overwrite output without prompting
-      "-i", inputPath,         // input file
-      "-ar", "24000",          // resample to 24 kHz
-      "-ac", "1",              // mono
-      "-acodec", "pcm_s16le",  // PCM 16-bit little-endian
-      outputPath,              // output WAV
-    ]);
+    await execFileAsync(
+      FFMPEG_BIN,
+      [
+        "-y", // overwrite output without prompting
+        "-protocol_whitelist",
+        "file,pipe",
+        "-f",
+        inputFormat,
+        "-i",
+        inputPath, // input file
+        "-t",
+        "10",
+        "-ar",
+        "24000", // resample to 24 kHz
+        "-ac",
+        "1", // mono
+        "-acodec",
+        "pcm_s16le", // PCM 16-bit little-endian
+        outputPath, // output WAV
+      ],
+      { timeout: 10_000, maxBuffer: 1_048_576 },
+    );
     return await fs.promises.readFile(outputPath);
   } finally {
     fs.promises.unlink(inputPath).catch(() => {});
@@ -102,9 +126,26 @@ async function decodeAudioToWAV(inputBuffer: Buffer, inputFormat: string): Promi
 
 // ── Key detection profiles ────────────────────────────────────────────────────
 // Krumhansl-Schmuckler key profiles (1990). Root = C (index 0).
-const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const MAJOR_PROFILE = [
+  6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88,
+];
+const MINOR_PROFILE = [
+  6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17,
+];
+const NOTE_NAMES = [
+  "C",
+  "C#",
+  "D",
+  "D#",
+  "E",
+  "F",
+  "F#",
+  "G",
+  "G#",
+  "A",
+  "A#",
+  "B",
+];
 
 // ── WAV parsing ───────────────────────────────────────────────────────────────
 
@@ -114,49 +155,8 @@ interface ParsedAudio {
 }
 
 function parseWAV(buffer: Buffer): ParsedAudio {
-  // Validate RIFF header
-  const riff = buffer.readUInt32BE(0); // "RIFF" = 0x52494646
-  if (riff !== 0x52494646) throw new Error("Not a WAV file");
-
-  const sampleRate = buffer.readUInt32LE(24);
-  const numChannels = buffer.readUInt16LE(22);
-  const bitsPerSample = buffer.readUInt16LE(34);
-
-  // Find the "data" sub-chunk (0x64617461)
-  let offset = 12;
-  let dataOffset = -1;
-  let dataSize = 0;
-  while (offset + 8 <= buffer.length) {
-    const chunkId = buffer.readUInt32BE(offset);
-    const chunkSize = buffer.readUInt32LE(offset + 4);
-    if (chunkId === 0x64617461) {
-      dataOffset = offset + 8;
-      dataSize = chunkSize;
-      break;
-    }
-    offset += 8 + chunkSize;
-  }
-  if (dataOffset < 0) throw new Error("WAV data chunk not found");
-
-  const bytesPerSample = bitsPerSample / 8;
-  const numSamples = Math.floor(dataSize / (bytesPerSample * numChannels));
-  const samples = new Float32Array(numSamples);
-
-  for (let i = 0; i < numSamples; i++) {
-    const off = dataOffset + i * bytesPerSample * numChannels;
-    if (off + bytesPerSample > buffer.length) break;
-    if (bitsPerSample === 16) {
-      samples[i] = buffer.readInt16LE(off) / 32768.0;
-    } else if (bitsPerSample === 8) {
-      samples[i] = (buffer.readUInt8(off) - 128) / 128.0;
-    } else if (bitsPerSample === 32) {
-      samples[i] = buffer.readFloatLE(off);
-    } else {
-      samples[i] = buffer.readInt16LE(off) / 32768.0; // fallback
-    }
-  }
-
-  return { samples, sampleRate };
+  const pcm = Buffer.from(extractPcm16Wav(buffer.toString("latin1")), "latin1");
+  return fromRawPCM16(pcm, 24000);
 }
 
 function fromRawPCM16(buffer: Buffer, sampleRate = 24000): ParsedAudio {
@@ -182,7 +182,7 @@ function computeRMS(samples: Float32Array): number {
 function computeZCR(samples: Float32Array): number {
   let crossings = 0;
   for (let i = 1; i < samples.length; i++) {
-    if ((samples[i] >= 0) !== (samples[i - 1] >= 0)) crossings++;
+    if (samples[i] >= 0 !== samples[i - 1] >= 0) crossings++;
   }
   return crossings / samples.length;
 }
@@ -207,7 +207,9 @@ function computeChroma(samples: Float32Array, sampleRate: number): number[] {
       const k = (freq * N) / sampleRate;
       const omega = (2 * Math.PI * k) / N;
       const cosOmega = Math.cos(omega);
-      let s0 = 0, s1 = 0, s2 = 0;
+      let s0 = 0,
+        s1 = 0,
+        s2 = 0;
       for (let n = 0; n < N; n++) {
         s0 = samples[n] + 2 * cosOmega * s1 - s2;
         s2 = s1;
@@ -231,9 +233,12 @@ function pearson(a: number[], b: number[]): number {
   const n = a.length;
   const ma = a.reduce((s, v) => s + v, 0) / n;
   const mb = b.reduce((s, v) => s + v, 0) / n;
-  let num = 0, da = 0, db = 0;
+  let num = 0,
+    da = 0,
+    db = 0;
   for (let i = 0; i < n; i++) {
-    const ai = a[i] - ma, bi = b[i] - mb;
+    const ai = a[i] - ma,
+      bi = b[i] - mb;
     num += ai * bi;
     da += ai * ai;
     db += bi * bi;
@@ -255,7 +260,10 @@ function detectKey(chroma: number[]): KeyResult {
 
   for (let root = 0; root < 12; root++) {
     // Rotate chroma so that `root` aligns with the profile's C position
-    const rotated = Array.from({ length: 12 }, (_, i) => chroma[(i + root) % 12]);
+    const rotated = Array.from(
+      { length: 12 },
+      (_, i) => chroma[(i + root) % 12],
+    );
     const majorScore = pearson(rotated, MAJOR_PROFILE);
     const minorScore = pearson(rotated, MINOR_PROFILE);
 
@@ -327,7 +335,11 @@ function estimateBPM(samples: Float32Array, sampleRate: number): number {
  * Classify audio as silence / speech / music.
  * Heuristics: music has lower ZCR + higher tonal chroma variance.
  */
-function classifyAudio(rms: number, zcr: number, chroma: number[]): "silence" | "speech" | "music" {
+function classifyAudio(
+  rms: number,
+  zcr: number,
+  chroma: number[],
+): "silence" | "speech" | "music" {
   if (rms < 0.008) return "silence";
 
   // Variance of chroma: music has a more concentrated distribution (tonal)
@@ -342,7 +354,11 @@ function classifyAudio(rms: number, zcr: number, chroma: number[]): "silence" | 
   return rms > 0.04 ? "music" : "speech";
 }
 
-function describeMood(rms: number, bpm: number, mode: "major" | "minor"): string[] {
+function describeMood(
+  rms: number,
+  bpm: number,
+  mode: "major" | "minor",
+): string[] {
   const tags: string[] = [];
 
   // Energy level
@@ -367,7 +383,13 @@ function describeMood(rms: number, bpm: number, mode: "major" | "minor"): string
 // ── Route ─────────────────────────────────────────────────────────────────────
 
 router.post("/music-analyze", async (req, res): Promise<void> => {
-  const { sessionId, audioData, sampleRate: clientSampleRate, userKey, format } = req.body as {
+  const {
+    sessionId,
+    audioData,
+    sampleRate: clientSampleRate,
+    userKey,
+    format,
+  } = req.body as {
     sessionId?: string;
     audioData?: string;
     sampleRate?: number;
@@ -382,6 +404,21 @@ router.post("/music-analyze", async (req, res): Promise<void> => {
   }
   if (!audioData || typeof audioData !== "string") {
     res.status(400).json({ error: "audioData (base64) is required" });
+    return;
+  }
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(audioData) || audioData.length % 4 !== 0) {
+    res.status(400).json({ error: "audioData must be valid base64" });
+    return;
+  }
+  if (
+    clientSampleRate !== undefined &&
+    (!Number.isInteger(clientSampleRate) ||
+      clientSampleRate < 8000 ||
+      clientSampleRate > 48000)
+  ) {
+    res
+      .status(400)
+      .json({ error: "sampleRate must be an integer from 8000 to 48000" });
     return;
   }
   if (audioData.length > MAX_AUDIO_B64_CHARS) {
@@ -406,14 +443,23 @@ router.post("/music-analyze", async (req, res): Promise<void> => {
 
     let parsed: ParsedAudio;
 
-    const compressedFormat = ffmpegFormatHint(format);
+    let compressedFormat: string | null;
+    try {
+      compressedFormat = ffmpegFormatHint(format);
+    } catch {
+      res.status(400).json({ error: "Unsupported audio format" });
+      return;
+    }
 
     if (isWAV(rawBuffer)) {
       // Explicit WAV — parse directly (iOS PCM16 chunks wrapped in a WAV header)
       try {
         parsed = parseWAV(rawBuffer);
       } catch {
-        parsed = fromRawPCM16(rawBuffer, clientSampleRate ?? 24000);
+        res
+          .status(422)
+          .json({ error: "Invalid WAV: expected intact PCM16, 24 kHz mono" });
+        return;
       }
     } else if (compressedFormat) {
       // Client supplied a format hint (e.g. "m4a" from Android) — transcode via ffmpeg.
@@ -422,21 +468,53 @@ router.post("/music-analyze", async (req, res): Promise<void> => {
       try {
         const wavBuffer = await decodeAudioToWAV(rawBuffer, compressedFormat);
         parsed = parseWAV(wavBuffer);
-        logger.debug({ sessionId, format: compressedFormat }, "music-analyze: ffmpeg decoded compressed audio");
+        logger.debug(
+          { sessionId, format: compressedFormat },
+          "music-analyze: ffmpeg decoded compressed audio",
+        );
       } catch (decodeErr) {
-        logger.warn({ sessionId, format: compressedFormat, err: decodeErr }, "music-analyze: ffmpeg decode failed");
-        res.status(422).json({ error: "Could not decode audio. Ensure ffmpeg is available in the server environment." });
+        logger.warn(
+          { sessionId, format: compressedFormat, err: decodeErr },
+          "music-analyze: ffmpeg decode failed",
+        );
+        res
+          .status(422)
+          .json({
+            error:
+              "Could not decode audio. Ensure ffmpeg is available in the server environment.",
+          });
         return;
       }
     } else {
       // No hint and not WAV — treat as raw PCM16 (iOS streaming chunks)
+      if (
+        format === "wav" ||
+        rawBuffer.length % 2 ||
+        rawBuffer.toString("ascii", 4, 8) === "ftyp" ||
+        rawBuffer.toString("ascii", 0, 4) === "OggS"
+      ) {
+        res
+          .status(422)
+          .json({
+            error: "Compressed or damaged audio needs a valid format hint",
+          });
+        return;
+      }
       parsed = fromRawPCM16(rawBuffer, clientSampleRate ?? 24000);
     }
 
     const { samples, sampleRate } = parsed;
 
+    if (samples.length > sampleRate * 10) {
+      res
+        .status(413)
+        .json({ error: "Music analysis accepts at most 10 seconds per clip" });
+      return;
+    }
     if (samples.length < 512) {
-      res.status(400).json({ error: "Audio buffer too short (need at least ~10ms)" });
+      res
+        .status(400)
+        .json({ error: "Audio buffer too short (need at least ~10ms)" });
       return;
     }
 
