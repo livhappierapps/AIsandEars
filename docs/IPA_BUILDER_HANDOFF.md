@@ -26,6 +26,23 @@ Do not ask for passwords, Apple credentials, API keys, signing certificates, pro
 - Build profiles are in `artifacts/ais-and-ears-native/eas.json`. Inspect the actual profiles rather than assuming their names or distribution settings are sufficient for the requested IPA.
 - The app uses the AIs & Ears API at the configured production domain. Do not point it at a guessed endpoint.
 
+## Observed build environment
+
+These versions were observed in the Replit workspace on 2026-11-06. Treat them as environment evidence, not as proof that an IPA build succeeds:
+
+| Tool | Observed version |
+| --- | --- |
+| OS | Replit Linux x86_64, kernel 6.18.60 |
+| Bash | GNU bash 5.3.15 |
+| Node.js | v24.22.1 |
+| pnpm | 10.26.1 |
+| npm | 11.18.0 |
+| Git | 2.55.0 |
+| Python | 3.13.11 |
+| Expo CLI reported by the native package command | 54.0.25 |
+
+The native package manifest currently declares `expo` `~54.0.27`, `@expo/cli` `54.0.23`, and React Native `0.81.5`. The workspace root separately declares Expo `~57.0.4` and React Native `0.86.0`; do not assume the root declarations are the native app's resolved versions. Use `artifacts/ais-and-ears-native/package.json` and the matching importer in `pnpm-lock.yaml` as the app-specific records, and investigate any version inconsistency rather than silently changing it.
+
 ## Known issues to investigate
 
 - **Media sharing controls:** users need to see when audio or video is being shared and have a reliable stop action.

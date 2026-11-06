@@ -11,6 +11,7 @@ out-tsc
 
 # dependencies
 node_modules
+**/node_modules/
 
 # IDEs and editors
 /.idea
@@ -48,3 +49,17 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Local account settings and secrets
+/.config/
+.env
+.env.*
+!.env.example
+**/credentials.json
+**/google-service-account.json
+*.pem
+*.p8
+*.p12
+*.pfx
+*.mobileprovision
+*.keystore
