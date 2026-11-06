@@ -17,7 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 
-const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
+import { apiUrl } from "@/lib/api";
 
 interface Tier {
   id: string;
@@ -37,7 +37,12 @@ const TIERS: Tier[] = [
     subtitle: "Monthly",
     price: "$10.99",
     tier: "full-monthly",
-    features: ["Unlimited audio + vision", "Leo sees & hears you", "24/7 access", "Cancel anytime"],
+    features: [
+      "Unlimited audio + vision",
+      "Leo sees & hears you",
+      "24/7 access",
+      "Cancel anytime",
+    ],
     featured: true,
     isSubscription: true,
   },
@@ -47,7 +52,12 @@ const TIERS: Tier[] = [
     subtitle: "Monthly",
     price: "$5.99",
     tier: "audio-monthly",
-    features: ["Unlimited audio", "Leo hears you", "24/7 access", "Cancel anytime"],
+    features: [
+      "Unlimited audio",
+      "Leo hears you",
+      "24/7 access",
+      "Cancel anytime",
+    ],
     featured: false,
     isSubscription: true,
   },
@@ -57,7 +67,11 @@ const TIERS: Tier[] = [
     subtitle: "30 minutes",
     price: "$4.99",
     tier: "full-session",
-    features: ["30-min audio + vision", "Leo sees & hears you", "One-time payment"],
+    features: [
+      "30-min audio + vision",
+      "Leo sees & hears you",
+      "One-time payment",
+    ],
     featured: false,
     isSubscription: false,
   },
@@ -92,7 +106,7 @@ export default function PackagesTab() {
       const successUrl = `ais-and-ears-native://conversation?membership_id=MEMBERSHIP_ID&tier=${tier.tier}`;
       const cancelUrl = "ais-and-ears-native://cancelled";
 
-      const res = await fetch(`https://${DOMAIN}/api/checkout`, {
+      const res = await fetch(apiUrl("checkout"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -102,7 +116,7 @@ export default function PackagesTab() {
         }),
       });
 
-      const data = await res.json() as { url?: string; error?: string };
+      const data = (await res.json()) as { url?: string; error?: string };
 
       if (!res.ok || !data.url) {
         throw new Error(data.error ?? "Checkout unavailable");
@@ -128,7 +142,9 @@ export default function PackagesTab() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={[styles.heading, { color: colors.foreground }]}>Choose Your Uplink</Text>
+        <Text style={[styles.heading, { color: colors.foreground }]}>
+          Choose Your Uplink
+        </Text>
         <Text style={[styles.subheading, { color: colors.mutedForeground }]}>
           Give Leo your eyes and ears. No middlemen. No transcriptions.
         </Text>
@@ -167,8 +183,12 @@ function TierCard({ tier, colors, loading, onBuy }: TierCardProps) {
       ]}
     >
       {tier.featured && (
-        <View style={[styles.featuredBadge, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.featuredText, { color: colors.primaryForeground }]}>
+        <View
+          style={[styles.featuredBadge, { backgroundColor: colors.primary }]}
+        >
+          <Text
+            style={[styles.featuredText, { color: colors.primaryForeground }]}
+          >
             Most Popular
           </Text>
         </View>
@@ -176,17 +196,28 @@ function TierCard({ tier, colors, loading, onBuy }: TierCardProps) {
 
       <View style={styles.cardHeader}>
         <View>
-          <Text style={[styles.tierName, { color: colors.foreground }]}>{tier.name}</Text>
-          <Text style={[styles.tierSubtitle, { color: colors.mutedForeground }]}>
+          <Text style={[styles.tierName, { color: colors.foreground }]}>
+            {tier.name}
+          </Text>
+          <Text
+            style={[styles.tierSubtitle, { color: colors.mutedForeground }]}
+          >
             {tier.subtitle}
           </Text>
         </View>
         <View style={styles.priceBlock}>
-          <Text style={[styles.price, { color: tier.featured ? colors.primary : colors.foreground }]}>
+          <Text
+            style={[
+              styles.price,
+              { color: tier.featured ? colors.primary : colors.foreground },
+            ]}
+          >
             {tier.price}
           </Text>
           {tier.isSubscription && (
-            <Text style={[styles.perMonth, { color: colors.mutedForeground }]}>/mo</Text>
+            <Text style={[styles.perMonth, { color: colors.mutedForeground }]}>
+              /mo
+            </Text>
           )}
         </View>
       </View>
@@ -194,8 +225,16 @@ function TierCard({ tier, colors, loading, onBuy }: TierCardProps) {
       <View style={styles.featureList}>
         {tier.features.map((feat) => (
           <View key={feat} style={styles.featureRow}>
-            <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-            <Text style={[styles.featureText, { color: colors.mutedForeground }]}>{feat}</Text>
+            <Ionicons
+              name="checkmark-circle"
+              size={16}
+              color={colors.primary}
+            />
+            <Text
+              style={[styles.featureText, { color: colors.mutedForeground }]}
+            >
+              {feat}
+            </Text>
           </View>
         ))}
       </View>
@@ -213,13 +252,20 @@ function TierCard({ tier, colors, loading, onBuy }: TierCardProps) {
         testID={`buy-${tier.id}`}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={tier.featured ? colors.primaryForeground : colors.foreground} />
+          <ActivityIndicator
+            size="small"
+            color={tier.featured ? colors.primaryForeground : colors.foreground}
+          />
         ) : (
           <>
             <Text
               style={[
                 styles.buyText,
-                { color: tier.featured ? colors.primaryForeground : colors.foreground },
+                {
+                  color: tier.featured
+                    ? colors.primaryForeground
+                    : colors.foreground,
+                },
               ]}
             >
               Get Access
@@ -227,7 +273,9 @@ function TierCard({ tier, colors, loading, onBuy }: TierCardProps) {
             <Feather
               name="arrow-right"
               size={16}
-              color={tier.featured ? colors.primaryForeground : colors.foreground}
+              color={
+                tier.featured ? colors.primaryForeground : colors.foreground
+              }
             />
           </>
         )}

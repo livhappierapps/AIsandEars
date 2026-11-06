@@ -3,7 +3,7 @@
  *
  * Voice pipeline (iOS):
  *   Mic → expo-av LINEAR_PCM 24kHz mono → 500ms WAV chunks
- *   → skip 44-byte WAV header → raw PCM16 bytes
+ *   → validate RIFF format/chunks → raw PCM16 bytes
  *   → base64 → input_audio_buffer.append over WebSocket
  *   → xAI server_vad detects speech end → Leo responds in text
  *   → expo-speech reads Leo's response aloud
@@ -14,8 +14,12 @@
  * Vision: tap camera → ImagePicker → POST /api/grok-vision → Leo describes what it sees
  */
 
+import { extractPcm16Wav } from "@workspace/media-utils";
+import { apiUrl, socketUrl } from "@/lib/api";
 import { Audio } from "expo-av";
-import * as FileSystem from "expo-file-system";
+// SDK 54's expo-file-system moved readAsStringAsync/deleteAsync to the
+// "/legacy" entry point; calling them from the root import throws at runtime.
+import * as FileSystem from "expo-file-system/legacy";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -24,6 +28,7 @@ import * as Speech from "expo-speech";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -39,8 +44,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSettings } from "@/context/SettingsContext";
 import { useColors } from "@/hooks/useColors";
 
-const DOMAIN = process.env.EXPO_PUBLIC_DOMAIN ?? "";
-
 function genId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -53,7 +56,8 @@ const BASE_INSTRUCTIONS =
   "If asked about what you can see, acknowledge you can receive camera snapshots via the vision button. " +
   "If music context is provided in your system prompt, you can naturally reference it when asked about the music or vibe.";
 
-type ConnStatus = "idle" | "verifying" | "connecting" | "connected" | "error" | "ended";
+type ConnStatus =
+  "idle" | "verifying" | "connecting" | "connected" | "error" | "ended";
 
 interface ChatMessage {
   id: string;
@@ -68,19 +72,13 @@ interface ChatMessage {
 // ── PCM16 streaming config ──────────────────────────────────────────────────
 // xAI Realtime API requires: PCM16, 24 kHz, mono, little-endian
 // iOS LINEAR_PCM records exactly this format inside a WAV container.
-// The WAV container header is always 44 bytes — we strip it before sending.
+// Validate RIFF chunks and format before extracting PCM; never assume 44 bytes.
 // Android: expo-av cannot output raw PCM16 — voice input is iOS-only for now.
-
-const WAV_HEADER_BYTES = 44;
 
 const MIC_RECORDING_OPTIONS: Audio.RecordingOptions = {
   android: {
-    extension: ".wav",
-    outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-    audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
-    sampleRate: 24000,
-    numberOfChannels: 1,
-    bitRate: 384000,
+    // Not used for live voice: Android MediaRecorder cannot emit PCM WAV.
+    ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
   },
   ios: {
     extension: ".wav",
@@ -118,14 +116,22 @@ export default function ConversationScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { settings } = useSettings();
+  const { settings, ready: settingsReady } = useSettings();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
-  const params = useLocalSearchParams<{ session_id?: string; tier?: string }>();
+  const params = useLocalSearchParams<{
+    session_id?: string;
+    membership_id?: string;
+    tier?: string;
+  }>();
 
   const [status, setStatus] = useState<ConnStatus>("idle");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
-  const [verifiedSessionId, setVerifiedSessionId] = useState<string | null>(null);
+  const [verifiedSessionId, setVerifiedSessionId] = useState<string | null>(
+    null,
+  );
   const [tier, setTier] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
@@ -136,7 +142,9 @@ export default function ConversationScreen() {
   const [musicAnalysisActive, setMusicAnalysisActive] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamingIdRef = useRef<string | null>(null);
+  const streamingTextRef = useRef("");
   const inputRef = useRef<TextInput>(null);
 
   // Mic refs — using refs (not state) so async recording loop reads current values
@@ -152,10 +160,109 @@ export default function ConversationScreen() {
   // Android: dedicated recording for music analysis (separate from the mic streaming loop)
   const androidMusicRecordingRef = useRef<Audio.Recording | null>(null);
 
+  const mountedRef = useRef(true);
+  const micEpochRef = useRef(0);
+  const musicEpochRef = useRef(0);
+  const visionEpochRef = useRef(0);
+  const visionPendingRef = useRef(false);
+  const micStartingRef = useRef(false);
+  const requestsRef = useRef(new Map<AbortController, string>());
+  const musicBusyRef = useRef(false);
+  const eventHandlerRef = useRef<(msg: Record<string, unknown>) => void>(
+    () => {},
+  );
+
+  // Single stop path: disconnects, navigation, expiry and backgrounding all fail closed.
+  const stopMedia = useCallback(() => {
+    if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
+    connectionTimerRef.current = null;
+    micEpochRef.current++;
+    musicEpochRef.current++;
+    visionEpochRef.current++;
+    visionPendingRef.current = false;
+    micStartingRef.current = false;
+    isMicActiveRef.current = false;
+    musicAnalysisActiveRef.current = false;
+    setIsMicActive(false);
+    setMusicAnalysisActive(false);
+    pcmChunksRef.current = [];
+    lastMusicContextRef.current = null;
+    setMusicContext(null);
+    if (musicIntervalRef.current) clearInterval(musicIntervalRef.current);
+    musicIntervalRef.current = null;
+    for (const recording of [
+      currentRecordingRef.current,
+      androidMusicRecordingRef.current,
+    ]) {
+      if (recording)
+        void recording
+          .stopAndUnloadAsync()
+          .catch(() => {})
+          .finally(() => {
+            const uri = recording.getURI();
+            if (uri)
+              void FileSystem.deleteAsync(uri, { idempotent: true }).catch(
+                () => {},
+              );
+          });
+    }
+    currentRecordingRef.current = null;
+    androidMusicRecordingRef.current = null;
+    for (const controller of requestsRef.current.keys()) controller.abort();
+    requestsRef.current.clear();
+    void Speech.stop();
+    void Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+    }).catch(() => {});
+  }, []);
+
+  async function requestJson(path: string, init: RequestInit = {}) {
+    const controller = new AbortController();
+    requestsRef.current.set(controller, path);
+    const timer = setTimeout(() => controller.abort(), 90_000); // accommodates Render cold starts
+    try {
+      const res = await fetch(apiUrl(path), {
+        ...init,
+        signal: controller.signal,
+      });
+      const data = await res.json();
+      if (!res.ok)
+        throw new Error(data.error ?? `Service error (HTTP ${res.status})`);
+      return data;
+    } finally {
+      clearTimeout(timer);
+      requestsRef.current.delete(controller);
+    }
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "background") {
+        stopMedia();
+        wsRef.current?.close(1000, "App backgrounded");
+        setStatus("ended");
+      }
+    });
+    return () => {
+      mountedRef.current = false;
+      sub.remove();
+      stopMedia();
+    };
+  }, [stopMedia]);
+
+  useEffect(() => {
+    if (!settings.verbalResponses) void Speech.stop();
+  }, [settings.verbalResponses]);
+
   // ── Session verification ─────────────────────────────────────────────────
   useEffect(() => {
-    const rawSessionId = params.session_id;
-    if (!rawSessionId) { setStatus("error"); return; }
+    const rawSessionId = params.session_id ?? params.membership_id;
+    if (!rawSessionId) {
+      setStatus("error");
+      return;
+    }
 
     // Whop membership IDs start with "mem_"
     if (rawSessionId.startsWith("mem_")) {
@@ -173,102 +280,113 @@ export default function ConversationScreen() {
     try {
       const query = new URLSearchParams({ membership_id: membershipId });
       if (tierParam) query.set("tier", tierParam);
-      const res = await fetch(`https://${DOMAIN}/api/checkout/verify?${query.toString()}`);
-      const data = await res.json() as {
+      const data = (await requestJson(
+        `checkout/verify?${query.toString()}`,
+      )) as {
         sessionId?: string;
         tier?: string;
         expiresAt?: string | null;
         error?: string;
       };
-      if (!res.ok || !data.sessionId) throw new Error(data.error ?? "Session verification failed");
+      if (!data.sessionId)
+        throw new Error(data.error ?? "Session verification failed");
+      if (!mountedRef.current) return;
       setVerifiedSessionId(data.sessionId);
       setTier(data.tier ?? null);
       if (data.expiresAt) setExpiresAt(new Date(data.expiresAt));
       setStatus("connecting");
     } catch (err: unknown) {
+      if (!mountedRef.current) return;
       const msg = err instanceof Error ? err.message : "Verification failed";
-      Alert.alert("Session Error", msg, [{ text: "Go Back", onPress: () => router.back() }]);
+      Alert.alert("Session Error", msg, [
+        { text: "Go Back", onPress: () => router.back() },
+      ]);
       setStatus("error");
     }
   }
 
   // ── WebSocket connection ─────────────────────────────────────────────────
   useEffect(() => {
-    if (!verifiedSessionId || status !== "connecting") return;
-
-    const userKey = settings.xaiApiKey?.trim();
-    const wsUrl = `wss://${DOMAIN}/api/grok-live?sessionId=${verifiedSessionId}${
-      userKey ? `&userKey=${encodeURIComponent(userKey)}` : ""
-    }`;
+    if (!verifiedSessionId || !settingsReady) return;
+    let wsUrl: string;
+    try {
+      wsUrl = socketUrl(
+        verifiedSessionId,
+        settingsRef.current.xaiApiKey?.trim(),
+      );
+    } catch (err) {
+      setStatus("error");
+      Alert.alert("API Configuration", String(err));
+      return;
+    }
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      setStatus("connected");
+      // Wait for the proxy's upstream-ready event, not just a local WS open.
 
       // Configure session:
-      //   - modalities: ["text"] — Leo responds in text, expo-speech reads it aloud
+      //   - Leo replies with audio + transcript; we display the transcript and
+      //     expo-speech reads it aloud (raw audio playback is a future phase)
       //   - input_audio_format: "pcm16" — we stream raw PCM16 from the mic
       //   - server_vad — xAI detects when user stops speaking (no manual commit needed)
       //   - silence_duration_ms: 700 — extra 100ms vs web to absorb mobile network jitter
-      ws.send(JSON.stringify({
-        type: "session.update",
-        session: {
-          modalities: ["text"],
-          input_audio_format: "pcm16",
-          instructions: BASE_INSTRUCTIONS,
-          temperature: 0.85,
-          max_response_output_tokens: 200,
-          turn_detection: {
-            type: "server_vad",
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 700,
+      ws.send(
+        JSON.stringify({
+          type: "session.update",
+          session: {
+            input_audio_format: "pcm16",
+            instructions: BASE_INSTRUCTIONS,
+            turn_detection: {
+              type: "server_vad",
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 700,
+            },
           },
-        },
-      }));
-
-      addLeoMessage(
-        "Connected — I can hear you. Tap the mic to speak, or type below. Tap 📷 to share your view.",
-        false,
+        }),
       );
     };
 
     ws.onmessage = (event) => {
       try {
-        handleServerEvent(JSON.parse(event.data as string));
+        if (ws.readyState === WebSocket.OPEN)
+          eventHandlerRef.current(JSON.parse(event.data as string));
       } catch {}
     };
 
-    ws.onerror = () => { setStatus("error"); };
+    ws.onerror = () => {
+      stopMedia();
+      setStatus("error");
+    };
 
     ws.onclose = (e) => {
-      if (e.code !== 1000) {
-        setStatus((current) => current === "ended" ? current : "error");
-      }
+      stopMedia();
+      setStatus((current) =>
+        current === "ended" ? current : e.code === 1000 ? "ended" : "error",
+      );
     };
 
+    const connectTimer = setTimeout(() => {
+      if (ws.readyState < WebSocket.CLOSING)
+        ws.close(1000, "Connection timeout");
+      stopMedia();
+      setStatus("error");
+    }, 90_000);
+    // Cleared on the actual upstream-ready event too.
+    connectionTimerRef.current = connectTimer;
     return () => {
-      // Stop music analysis
-      musicAnalysisActiveRef.current = false;
-      if (musicIntervalRef.current) {
-        clearInterval(musicIntervalRef.current);
-        musicIntervalRef.current = null;
-      }
-      // Android: stop dedicated music recording if running
-      if (androidMusicRecordingRef.current) {
-        androidMusicRecordingRef.current.stopAndUnloadAsync().catch(() => {});
-        androidMusicRecordingRef.current = null;
-      }
-      // Stop mic if active when navigating away
-      isMicActiveRef.current = false;
-      if (currentRecordingRef.current) {
-        currentRecordingRef.current.stopAndUnloadAsync().catch(() => {});
-        currentRecordingRef.current = null;
-      }
+      clearTimeout(connectTimer);
+      ws.onclose = null;
+      ws.onerror = null;
+      ws.onmessage = null;
+      ws.onopen = null;
+      stopMedia();
       ws.close(1000, "Screen unmounted");
+      if (wsRef.current === ws) wsRef.current = null;
     };
-  }, [verifiedSessionId, status === "connecting"]);
+    // Status is deliberately NOT a dependency: connecting -> connected must not close the socket.
+  }, [verifiedSessionId, settingsReady, stopMedia]);
 
   // ── Session timer ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -277,6 +395,7 @@ export default function ConversationScreen() {
       const remaining = Math.ceil((expiresAt.getTime() - Date.now()) / 1000);
       if (remaining <= 0) {
         setTimeRemaining(0);
+        stopMedia();
         setStatus("ended");
         wsRef.current?.close(1000, "Session expired");
         clearInterval(interval);
@@ -288,68 +407,152 @@ export default function ConversationScreen() {
   }, [expiresAt]);
 
   // ── Server event handler ─────────────────────────────────────────────────
-  const handleServerEvent = useCallback((msg: Record<string, unknown>) => {
-    switch (msg.type) {
-      case "response.text.delta": {
-        const delta = msg.delta as string;
-        const sid = streamingIdRef.current;
-        if (sid) {
-          setMessages((prev) =>
-            prev.map((m) => m.id === sid ? { ...m, text: m.text + delta } : m)
+  const handleServerEvent = useCallback(
+    (msg: Record<string, unknown>) => {
+      switch (msg.type) {
+        case "connected":
+          if (connectionTimerRef.current)
+            clearTimeout(connectionTimerRef.current);
+          setStatus("connected");
+          addLeoMessage(
+            "Connected. Microphone is OFF until you tap it. Camera sends snapshots only.",
           );
-        } else {
-          const newId = genId();
-          streamingIdRef.current = newId;
+          break;
+        case "conversation.item.input_audio_transcription.completed":
+          if (typeof msg.transcript === "string")
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: genId(),
+                role: "user",
+                text: msg.transcript as string,
+                isStreaming: false,
+                timestamp: new Date(),
+                isVoice: true,
+              },
+            ]);
+          break;
+        // Leo answers with audio + a transcript; we show/speak the transcript.
+        case "response.audio_transcript.delta":
+        case "response.text.delta": {
+          const delta = typeof msg.delta === "string" ? msg.delta : "";
+          streamingTextRef.current += delta;
+          const sid = streamingIdRef.current;
+          if (sid) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === sid ? { ...m, text: m.text + delta } : m,
+              ),
+            );
+          } else {
+            const newId = genId();
+            streamingIdRef.current = newId;
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: newId,
+                role: "leo",
+                text: delta,
+                isStreaming: true,
+                timestamp: new Date(),
+              },
+            ]);
+          }
+          break;
+        }
+
+        case "response.audio_transcript.done":
+        case "response.text.done": {
+          const text = (msg.transcript ?? msg.text) as string | undefined;
+          if (typeof text === "string" && text) {
+            streamingTextRef.current = text;
+            const id = streamingIdRef.current;
+            if (id)
+              setMessages((prev) =>
+                prev.map((m) => (m.id === id ? { ...m, text } : m)),
+              );
+            else {
+              const newId = genId();
+              streamingIdRef.current = newId;
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: newId,
+                  role: "leo",
+                  text,
+                  isStreaming: true,
+                  timestamp: new Date(),
+                },
+              ]);
+            }
+          }
+          break;
+        }
+        case "response.done": {
+          const id = streamingIdRef.current;
+          const text = streamingTextRef.current;
+          if (id)
+            setMessages((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, isStreaming: false } : m)),
+            );
+          if (
+            text &&
+            settingsRef.current.verbalResponses &&
+            wsRef.current?.readyState === WebSocket.OPEN
+          ) {
+            void Speech.stop();
+            Speech.speak(text, { language: "en", rate: 0.92, pitch: 1.05 });
+          }
+          streamingIdRef.current = null;
+          streamingTextRef.current = "";
+          setIsSending(false);
+          break;
+        }
+
+        // Phase 1: PCM16 audio output not yet implemented — Leo responds via text + expo-speech.
+        // Phase 2 will buffer these and play Leo's raw voice using expo-av.
+        case "response.audio.delta":
+        case "response.audio.done":
+          break;
+
+        // VAD events — useful for future UI feedback (e.g. "Leo is listening" indicator)
+        case "input_audio_buffer.speech_started":
+          void Speech.stop();
+          break;
+        case "input_audio_buffer.speech_stopped":
+        case "input_audio_buffer.committed":
+          break;
+
+        case "error": {
+          // Most realtime API errors are recoverable (the socket stays open), so
+          // surface them instead of tearing down the whole conversation. A fatal
+          // problem closes the socket and onclose sets the error state.
+          const err = msg.error as { message?: string } | undefined;
+          const text =
+            err?.message ??
+            (msg.message as string | undefined) ??
+            "Something went wrong";
           setMessages((prev) => [
             ...prev,
-            { id: newId, role: "leo", text: delta, isStreaming: true, timestamp: new Date() },
+            {
+              id: genId(),
+              role: "leo",
+              text: `⚠️ ${text}`,
+              isStreaming: false,
+              timestamp: new Date(),
+            },
           ]);
+          setIsSending(false);
+          break;
         }
-        break;
+
+        default:
+          break;
       }
-
-      case "response.done": {
-        const sid = streamingIdRef.current;
-        if (sid) {
-          setMessages((prev) => {
-            const done = prev.map((m) =>
-              m.id === sid ? { ...m, isStreaming: false } : m
-            );
-            if (settings.verbalResponses) {
-              const finalMsg = done.find((m) => m.id === sid);
-              if (finalMsg) {
-                Speech.stop();
-                Speech.speak(finalMsg.text, { language: "en", rate: 0.92, pitch: 1.05 });
-              }
-            }
-            return done;
-          });
-          streamingIdRef.current = null;
-        }
-        setIsSending(false);
-        break;
-      }
-
-      // Phase 1: PCM16 audio output not yet implemented — Leo responds via text + expo-speech.
-      // Phase 2 will buffer these and play Leo's raw voice using expo-av.
-      case "response.audio.delta":
-      case "response.audio.done":
-        break;
-
-      // VAD events — useful for future UI feedback (e.g. "Leo is listening" indicator)
-      case "input_audio_buffer.speech_started":
-      case "input_audio_buffer.speech_stopped":
-      case "input_audio_buffer.committed":
-        break;
-
-      case "error":
-        setStatus("error");
-        break;
-
-      default:
-        break;
-    }
-  }, [settings.verbalResponses]);
+    },
+    [settings.verbalResponses],
+  );
+  eventHandlerRef.current = handleServerEvent;
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   function addLeoMessage(text: string, isVision = false, isVoice = false) {
@@ -365,7 +568,7 @@ export default function ConversationScreen() {
         isVoice,
       },
     ]);
-    if (settings.verbalResponses && !isVision) {
+    if (settingsRef.current.verbalResponses && !isVision) {
       Speech.speak(text, { language: "en", rate: 0.92, pitch: 1.05 });
     }
   }
@@ -373,75 +576,65 @@ export default function ConversationScreen() {
   // ── PCM16 mic streaming ──────────────────────────────────────────────────
   //
   // Records in 500ms chunks (matching optimal mobile latency vs. overhead tradeoff).
-  // Each chunk: expo-av → WAV file → read as base64 → strip 44-byte header
+  // Each chunk: expo-av → WAV file → read as base64 → validate WAV and extract PCM
   //             → raw PCM16 bytes → re-encode base64 → input_audio_buffer.append
   //
   // xAI server_vad handles turn detection — no manual commit needed.
   // Loop continues until isMicActiveRef is set false.
 
-  const runRecordingLoop = useCallback(async () => {
-    if (!isMicActiveRef.current) return;
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-
-    const recording = new Audio.Recording();
-    currentRecordingRef.current = recording;
-
-    try {
-      await recording.prepareToRecordAsync(MIC_RECORDING_OPTIONS);
-      await recording.startAsync();
-
-      // Record 500ms chunk
-      await new Promise<void>((resolve) => setTimeout(resolve, 500));
-
-      // If mic was stopped during recording, clean up and exit
-      if (!isMicActiveRef.current) {
-        try { await recording.stopAndUnloadAsync(); } catch {}
-        currentRecordingRef.current = null;
-        return;
-      }
-
-      await recording.stopAndUnloadAsync();
-      currentRecordingRef.current = null;
-
-      const uri = recording.getURI();
-      if (uri && wsRef.current?.readyState === WebSocket.OPEN) {
-        // Read WAV file as base64
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-
-        // Decode → skip WAV header → extract raw PCM16 → re-encode
-        const binary = atob(base64);
-        if (binary.length > WAV_HEADER_BYTES) {
-          const pcmBinary = binary.slice(WAV_HEADER_BYTES);
-          const pcm16Base64 = btoa(pcmBinary);
-
-          wsRef.current.send(JSON.stringify({
-            type: "input_audio_buffer.append",
-            audio: pcm16Base64,
-          }));
-
-          // Accumulate raw PCM16 chunks for music analysis (keep last 10 = 5 seconds)
-          pcmChunksRef.current.push(pcm16Base64);
-          if (pcmChunksRef.current.length > 10) pcmChunksRef.current.shift();
+  const runRecordingLoop = useCallback(
+    async (epoch: number) => {
+      const active = () =>
+        mountedRef.current &&
+        isMicActiveRef.current &&
+        micEpochRef.current === epoch &&
+        wsRef.current?.readyState === WebSocket.OPEN;
+      while (active()) {
+        const recording = new Audio.Recording();
+        currentRecordingRef.current = recording;
+        try {
+          await recording.prepareToRecordAsync(MIC_RECORDING_OPTIONS);
+          if (!active()) return;
+          await recording.startAsync();
+          await new Promise<void>((resolve) => setTimeout(resolve, 500));
+          if (!active()) return;
+          await recording.stopAndUnloadAsync();
+          const uri = recording.getURI();
+          if (uri && active()) {
+            const base64 = await FileSystem.readAsStringAsync(uri, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            const pcm = btoa(extractPcm16Wav(atob(base64)));
+            if (!active()) return;
+            wsRef.current!.send(
+              JSON.stringify({ type: "input_audio_buffer.append", audio: pcm }),
+            );
+            pcmChunksRef.current.push(pcm);
+            if (pcmChunksRef.current.length > 10) pcmChunksRef.current.shift();
+          }
+        } catch (err) {
+          if (active()) {
+            stopMedia();
+            Alert.alert(
+              "Recording stopped",
+              err instanceof Error ? err.message : String(err),
+            );
+          }
+          return;
+        } finally {
+          await recording.stopAndUnloadAsync().catch(() => {});
+          const uri = recording.getURI();
+          if (uri)
+            await FileSystem.deleteAsync(uri, { idempotent: true }).catch(
+              () => {},
+            );
+          if (currentRecordingRef.current === recording)
+            currentRecordingRef.current = null;
         }
-
-        // Clean up temp file (fire-and-forget)
-        FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
       }
-    } catch {
-      // Recording error — stop loop gracefully
-      currentRecordingRef.current = null;
-      isMicActiveRef.current = false;
-      setIsMicActive(false);
-      return;
-    }
-
-    // Continue loop
-    if (isMicActiveRef.current) {
-      runRecordingLoop();
-    }
-  }, []);
+    },
+    [stopMedia],
+  );
 
   // ── Music analysis ───────────────────────────────────────────────────────
   //
@@ -458,41 +651,60 @@ export default function ConversationScreen() {
   //   4. If not music, clear the context so Leo isn't given stale info
 
   /** Apply a music-analyze API response to Leo's session (shared by iOS + Android paths). */
-  const applyMusicAnalysisResult = useCallback((data: { type: string; context?: string }) => {
-    if (data.type !== "music" || !data.context) {
-      // Not music — clear stale music context if present
-      if (lastMusicContextRef.current) {
-        lastMusicContextRef.current = null;
-        setMusicContext(null);
-        wsRef.current?.send(JSON.stringify({
-          type: "session.update",
-          session: { instructions: BASE_INSTRUCTIONS },
-        }));
+  const applyMusicAnalysisResult = useCallback(
+    (data: { type: string; context?: string }) => {
+      if (
+        !musicAnalysisActiveRef.current ||
+        wsRef.current?.readyState !== WebSocket.OPEN
+      )
+        return;
+      if (data.type !== "music" || !data.context) {
+        // Not music — clear stale music context if present
+        if (lastMusicContextRef.current) {
+          lastMusicContextRef.current = null;
+          setMusicContext(null);
+          (wsRef.current?.readyState === WebSocket.OPEN
+            ? wsRef.current
+            : null
+          )?.send(
+            JSON.stringify({
+              type: "session.update",
+              session: { instructions: BASE_INSTRUCTIONS },
+            }),
+          );
+        }
+        return;
       }
-      return;
-    }
 
-    // Avoid redundant session updates if context hasn't changed
-    if (data.context === lastMusicContextRef.current) return;
-    lastMusicContextRef.current = data.context;
-    setMusicContext(data.context);
+      // Avoid redundant session updates if context hasn't changed
+      if (data.context === lastMusicContextRef.current) return;
+      lastMusicContextRef.current = data.context;
+      setMusicContext(data.context);
 
-    // Update Leo's system prompt with music context
-    wsRef.current?.send(JSON.stringify({
-      type: "session.update",
-      session: {
-        instructions:
-          `${BASE_INSTRUCTIONS}\n\n` +
-          `🎵 Music context: ${data.context}. ` +
-          `If the user mentions the music, asks what's playing, or references the vibe, ` +
-          `naturally weave these musical qualities into your response.`,
-      },
-    }));
-  }, []);
+      // Update Leo's system prompt with music context
+      (wsRef.current?.readyState === WebSocket.OPEN
+        ? wsRef.current
+        : null
+      )?.send(
+        JSON.stringify({
+          type: "session.update",
+          session: {
+            instructions:
+              `${BASE_INSTRUCTIONS}\n\n` +
+              `🎵 Music context: ${data.context}. ` +
+              `If the user mentions the music, asks what's playing, or references the vibe, ` +
+              `naturally weave these musical qualities into your response.`,
+          },
+        }),
+      );
+    },
+    [],
+  );
 
   // ── iOS path: analyze accumulated PCM16 chunks ───────────────────────────
   const analyzeMusicBuffer = useCallback(async () => {
-    if (!musicAnalysisActiveRef.current) return;
+    if (!musicAnalysisActiveRef.current || musicBusyRef.current) return;
+    const epoch = musicEpochRef.current;
     if (!verifiedSessionId) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
     if (pcmChunksRef.current.length < 4) return; // need ≥2 seconds
@@ -502,13 +714,18 @@ export default function ConversationScreen() {
     // Concatenate binary strings (PCM16 is 8-bit-safe via Latin-1)
     let combined = "";
     for (const chunk of chunks) {
-      try { combined += atob(chunk); } catch { /* skip corrupted chunks */ }
+      try {
+        combined += atob(chunk);
+      } catch {
+        /* skip corrupted chunks */
+      }
     }
     if (!combined) return;
     const combinedB64 = btoa(combined);
 
+    musicBusyRef.current = true;
     try {
-      const res = await fetch(`https://${DOMAIN}/api/music-analyze`, {
+      const data = await requestJson("music-analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -517,10 +734,15 @@ export default function ConversationScreen() {
           sampleRate: 24000,
         }),
       });
-      if (!res.ok) return;
-      applyMusicAnalysisResult(await res.json() as { type: string; context?: string });
-    } catch {
-      // Network errors — silently skip this cycle
+      if (musicAnalysisActiveRef.current && musicEpochRef.current === epoch)
+        applyMusicAnalysisResult(data);
+    } catch (err) {
+      if (musicAnalysisActiveRef.current && musicEpochRef.current === epoch) {
+        stopMusicAnalysis();
+        Alert.alert("Music analysis stopped", String(err));
+      }
+    } finally {
+      musicBusyRef.current = false;
     }
   }, [verifiedSessionId, applyMusicAnalysisResult]);
 
@@ -528,88 +750,89 @@ export default function ConversationScreen() {
   //
   // Records a fresh 4-second AAC/M4A clip each cycle, sends it to the server,
   // then immediately starts the next clip. No PCM chunks required.
-  const runAndroidMusicAnalysis = useCallback(async () => {
-    if (!musicAnalysisActiveRef.current) return;
-    if (!verifiedSessionId) return;
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-
-    // Ensure microphone permission
-    const { status: permStatus } = await Audio.requestPermissionsAsync();
-    if (permStatus !== "granted") {
-      musicAnalysisActiveRef.current = false;
-      setMusicAnalysisActive(false);
-      return;
-    }
-
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-
-    const recording = new Audio.Recording();
-    androidMusicRecordingRef.current = recording;
-
-    try {
-      await recording.prepareToRecordAsync(ANDROID_MUSIC_OPTIONS);
-      await recording.startAsync();
-
-      // Collect 4 seconds of audio
-      await new Promise<void>((resolve) => setTimeout(resolve, 4000));
-
-      if (!musicAnalysisActiveRef.current) {
-        try { await recording.stopAndUnloadAsync(); } catch {}
-        androidMusicRecordingRef.current = null;
-        return;
-      }
-
-      await recording.stopAndUnloadAsync();
-      androidMusicRecordingRef.current = null;
-
-      const uri = recording.getURI();
-      if (uri && musicAnalysisActiveRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
-        const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
+  const runAndroidMusicAnalysis = useCallback(
+    async (epoch: number) => {
+      const active = () =>
+        mountedRef.current &&
+        musicAnalysisActiveRef.current &&
+        musicEpochRef.current === epoch &&
+        wsRef.current?.readyState === WebSocket.OPEN;
+      if (!verifiedSessionId || !active()) return;
+      try {
+        const permission = await Audio.requestPermissionsAsync();
+        if (!active()) return;
+        if (permission.status !== "granted")
+          throw new Error(
+            "Microphone permission is required for music analysis.",
+          );
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
         });
-        FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
-
-        if (base64) {
+        while (active()) {
+          const recording = new Audio.Recording();
+          androidMusicRecordingRef.current = recording;
           try {
-            const res = await fetch(`https://${DOMAIN}/api/music-analyze`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sessionId: verifiedSessionId,
-                audioData: base64,
-                format: "m4a",
-              }),
-            });
-            if (res.ok) {
-              applyMusicAnalysisResult(await res.json() as { type: string; context?: string });
+            await recording.prepareToRecordAsync(ANDROID_MUSIC_OPTIONS);
+            if (!active()) return;
+            await recording.startAsync();
+            await new Promise<void>((resolve) => setTimeout(resolve, 4000));
+            if (!active()) return;
+            await recording.stopAndUnloadAsync();
+            const uri = recording.getURI();
+            if (uri && active()) {
+              const audioData = await FileSystem.readAsStringAsync(uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+              if (!active()) return;
+              const data = await requestJson("music-analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  sessionId: verifiedSessionId,
+                  audioData,
+                  format: "m4a",
+                }),
+              });
+              if (active()) applyMusicAnalysisResult(data);
             }
-          } catch {
-            // Network errors — silently skip this cycle
+          } finally {
+            await recording.stopAndUnloadAsync().catch(() => {});
+            const uri = recording.getURI();
+            if (uri)
+              await FileSystem.deleteAsync(uri, { idempotent: true }).catch(
+                () => {},
+              );
+            if (androidMusicRecordingRef.current === recording)
+              androidMusicRecordingRef.current = null;
           }
         }
+      } catch (err) {
+        if (active()) {
+          stopMusicAnalysis();
+          Alert.alert("Music analysis stopped", String(err));
+        }
       }
-    } catch {
-      // Recording error — stop analysis gracefully
-      androidMusicRecordingRef.current = null;
-      musicAnalysisActiveRef.current = false;
-      setMusicAnalysisActive(false);
-      return;
-    }
-
-    // Continue loop
-    if (musicAnalysisActiveRef.current) {
-      runAndroidMusicAnalysis();
-    }
-  }, [verifiedSessionId, applyMusicAnalysisResult]);
+    },
+    [verifiedSessionId, applyMusicAnalysisResult],
+  );
 
   const startMusicAnalysis = useCallback(() => {
     if (musicAnalysisActiveRef.current) return; // already running
+    if (Platform.OS !== "android" && !isMicActiveRef.current) {
+      Alert.alert(
+        "Microphone required",
+        "Start the iOS microphone before music analysis.",
+      );
+      return;
+    }
+    const epoch = ++musicEpochRef.current;
     musicAnalysisActiveRef.current = true;
     setMusicAnalysisActive(true);
 
     if (Platform.OS === "android") {
       // Android: dedicated AAC recording loop (no PCM chunks available)
-      runAndroidMusicAnalysis();
+      void runAndroidMusicAnalysis(epoch);
     } else {
       // iOS: interval over accumulated PCM16 chunks from the mic streaming loop
       musicIntervalRef.current = setInterval(analyzeMusicBuffer, 5000);
@@ -619,6 +842,10 @@ export default function ConversationScreen() {
   }, [analyzeMusicBuffer, runAndroidMusicAnalysis]);
 
   const stopMusicAnalysis = useCallback(() => {
+    musicEpochRef.current++;
+    for (const [controller, path] of requestsRef.current)
+      if (path === "music-analyze") controller.abort();
+    pcmChunksRef.current = [];
     musicAnalysisActiveRef.current = false;
     setMusicAnalysisActive(false);
     // iOS interval
@@ -632,13 +859,18 @@ export default function ConversationScreen() {
       androidMusicRecordingRef.current = null;
     }
     // Clear music context from Leo's session
-    if (lastMusicContextRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
+    if (
+      lastMusicContextRef.current &&
+      wsRef.current?.readyState === WebSocket.OPEN
+    ) {
       lastMusicContextRef.current = null;
       setMusicContext(null);
-      wsRef.current.send(JSON.stringify({
-        type: "session.update",
-        session: { instructions: BASE_INSTRUCTIONS },
-      }));
+      wsRef.current.send(
+        JSON.stringify({
+          type: "session.update",
+          session: { instructions: BASE_INSTRUCTIONS },
+        }),
+      );
     }
   }, []);
 
@@ -651,19 +883,33 @@ export default function ConversationScreen() {
   }, [startMusicAnalysis, stopMusicAnalysis]);
 
   const startMic = async () => {
-    if (status !== "connected") return;
+    if (
+      status !== "connected" ||
+      micStartingRef.current ||
+      isMicActiveRef.current
+    )
+      return;
 
     // expo-av PCM16 recording is iOS-only for now
     // Android MediaRecorder cannot output raw PCM16 without native transcoding
-    if (Platform.OS === "android") {
+    if (Platform.OS !== "ios") {
       Alert.alert(
-        "Android Voice Coming Soon",
-        "Live voice input is currently iOS only. Type your message below, or tap 📷 to share your view.",
+        "Live Voice Unavailable Here",
+        "This native recorder supports iOS only. On Android use text or snapshots; for browser voice use the separate AIs & Ears web client.",
       );
       return;
     }
 
+    micStartingRef.current = true;
+    const epoch = ++micEpochRef.current;
     const { status: permStatus } = await Audio.requestPermissionsAsync();
+    micStartingRef.current = false;
+    if (
+      !mountedRef.current ||
+      micEpochRef.current !== epoch ||
+      wsRef.current?.readyState !== WebSocket.OPEN
+    )
+      return;
     if (permStatus !== "granted") {
       Alert.alert(
         "Microphone Access Needed",
@@ -678,12 +924,18 @@ export default function ConversationScreen() {
       playsInSilentModeIOS: true,
     });
 
+    if (
+      !mountedRef.current ||
+      micEpochRef.current !== epoch ||
+      wsRef.current?.readyState !== WebSocket.OPEN
+    )
+      return;
     Speech.stop(); // stop any current expo-speech before mic goes live
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     isMicActiveRef.current = true;
     setIsMicActive(true);
-    runRecordingLoop();
+    void runRecordingLoop(epoch);
 
     // Auto-start music analysis if the setting is on
     if (settings.musicAnalysis) {
@@ -692,11 +944,16 @@ export default function ConversationScreen() {
   };
 
   const stopMic = async () => {
+    micEpochRef.current++;
+    micStartingRef.current = false;
     isMicActiveRef.current = false;
     setIsMicActive(false);
+    stopMusicAnalysis();
 
     if (currentRecordingRef.current) {
-      try { await currentRecordingRef.current.stopAndUnloadAsync(); } catch {}
+      try {
+        await currentRecordingRef.current.stopAndUnloadAsync();
+      } catch {}
       currentRecordingRef.current = null;
     }
 
@@ -716,14 +973,24 @@ export default function ConversationScreen() {
     if (isMicActive) {
       stopMic();
     } else {
-      startMic();
+      void startMic().catch((err) => {
+        micStartingRef.current = false;
+        stopMedia();
+        Alert.alert("Microphone unavailable", String(err));
+      });
     }
   };
 
   // ── Send text message ────────────────────────────────────────────────────
   const sendMessage = () => {
     const text = inputText.trim();
-    if (!text || !wsRef.current || status !== "connected" || isSending) return;
+    if (
+      !text ||
+      wsRef.current?.readyState !== WebSocket.OPEN ||
+      status !== "connected" ||
+      isSending
+    )
+      return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInputText("");
@@ -732,57 +999,77 @@ export default function ConversationScreen() {
 
     setMessages((prev) => [
       ...prev,
-      { id: genId(), role: "user", text, isStreaming: false, timestamp: new Date() },
+      {
+        id: genId(),
+        role: "user",
+        text,
+        isStreaming: false,
+        timestamp: new Date(),
+      },
     ]);
 
-    wsRef.current.send(JSON.stringify({
-      type: "conversation.item.create",
-      item: {
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text }],
-      },
-    }));
+    wsRef.current.send(
+      JSON.stringify({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text }],
+        },
+      }),
+    );
     wsRef.current.send(JSON.stringify({ type: "response.create" }));
   };
 
   // ── Camera vision ────────────────────────────────────────────────────────
   const sendVisionSnapshot = async () => {
-    if (!verifiedSessionId) return;
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const { status: permStatus } = await ImagePicker.requestCameraPermissionsAsync();
-    if (permStatus !== "granted") {
-      Alert.alert("Camera Access Needed", "Allow camera access in Settings to use Leo's vision.");
+    const ws = wsRef.current;
+    if (
+      !verifiedSessionId ||
+      ws?.readyState !== WebSocket.OPEN ||
+      visionPendingRef.current
+    )
       return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      quality: 0.5,
-      base64: true,
-    });
-
-    if (result.canceled || !result.assets[0]?.base64) return;
-
-    const imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: genId(),
-        role: "user",
-        text: "📷 Camera snapshot sent",
-        isStreaming: false,
-        timestamp: new Date(),
-        isVision: true,
-      },
-    ]);
-
+    const epoch = visionEpochRef.current;
+    const active = () =>
+      mountedRef.current &&
+      visionEpochRef.current === epoch &&
+      wsRef.current === ws &&
+      ws.readyState === WebSocket.OPEN;
+    visionPendingRef.current = true;
     try {
-      const userKey = settings.xaiApiKey?.trim();
-      const res = await fetch(`https://${DOMAIN}/api/grok-vision`, {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const { status: permStatus } =
+        await ImagePicker.requestCameraPermissionsAsync();
+      // Stop/background/unmount while permission is pending must not open the camera later.
+      if (!active()) return;
+      if (permStatus !== "granted") {
+        Alert.alert(
+          "Camera Access Needed",
+          "Allow camera access in Settings to use Leo's vision.",
+        );
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.5,
+        base64: true,
+      });
+      if (!active() || result.canceled || !result.assets[0]?.base64) return;
+      const imageData = `data:image/jpeg;base64,${result.assets[0].base64}`;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: genId(),
+          role: "user",
+          text: "📷 Camera snapshot sent",
+          isStreaming: false,
+          timestamp: new Date(),
+          isVision: true,
+        },
+      ]);
+      const userKey = settingsRef.current.xaiApiKey?.trim();
+      const data = await requestJson("grok-vision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -793,13 +1080,18 @@ export default function ConversationScreen() {
           ...(userKey ? { userKey } : {}),
         }),
       });
-      const data = await res.json() as { message?: string; error?: string };
-      if (data.message) {
+      if (active() && data.message) {
         addLeoMessage(data.message, true);
         setHasUsedCamera(true);
       }
-    } catch {
-      addLeoMessage("I couldn't process the image. Please try again.", false);
+    } catch (err) {
+      if (active())
+        addLeoMessage(
+          `Vision failed: ${err instanceof Error ? err.message : String(err)}`,
+          true,
+        );
+    } finally {
+      if (visionEpochRef.current === epoch) visionPendingRef.current = false;
     }
   };
 
@@ -811,15 +1103,7 @@ export default function ConversationScreen() {
         text: "End",
         style: "destructive",
         onPress: () => {
-          Speech.stop();
-          // Stop music analysis (covers iOS interval + Android dedicated recording)
-          stopMusicAnalysis();
-          // Stop mic before closing WS
-          isMicActiveRef.current = false;
-          if (currentRecordingRef.current) {
-            currentRecordingRef.current.stopAndUnloadAsync().catch(() => {});
-            currentRecordingRef.current = null;
-          }
+          stopMedia();
           wsRef.current?.close(1000, "User ended session");
           setStatus("ended");
           router.back();
@@ -830,16 +1114,25 @@ export default function ConversationScreen() {
 
   // ── Status helpers ───────────────────────────────────────────────────────
   const statusColor =
-    status === "connected" ? "#22c55e"
-      : status === "connecting" || status === "verifying" ? "#f59e0b"
+    status === "connected"
+      ? "#22c55e"
+      : status === "connecting" || status === "verifying"
+        ? "#f59e0b"
         : "#ef4444";
 
   const statusLabel =
-    status === "verifying" ? "Verifying..."
-      : status === "connecting" ? "Connecting..."
-        : status === "connected" ? (isMicActive ? "Listening..." : "Live")
-          : status === "error" ? "Connection Error"
-            : status === "ended" ? "Session Ended"
+    status === "verifying"
+      ? "Verifying..."
+      : status === "connecting"
+        ? "Connecting..."
+        : status === "connected"
+          ? isMicActive
+            ? "Listening..."
+            : "Live"
+          : status === "error"
+            ? "Connection Error"
+            : status === "ended"
+              ? "Session Ended"
               : "Idle";
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
@@ -849,7 +1142,12 @@ export default function ConversationScreen() {
   return (
     <View style={[styles.container, { backgroundColor: "#0d1926" }]}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: topPad + 8, borderBottomColor: "#1e3a52" }]}>
+      <View
+        style={[
+          styles.header,
+          { paddingTop: topPad + 8, borderBottomColor: "#1e3a52" },
+        ]}
+      >
         <Pressable onPress={handleEnd} style={styles.headerBack} hitSlop={12}>
           <Ionicons name="chevron-down" size={24} color="#dce9ef" />
         </Pressable>
@@ -857,25 +1155,40 @@ export default function ConversationScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Leo</Text>
           <View style={styles.statusRow}>
-            <View style={[
-              styles.statusDot,
-              { backgroundColor: isMicActive ? "#82c4b0" : statusColor },
-            ]} />
-            <Text style={[
-              styles.statusLabel,
-              { color: isMicActive ? "#82c4b0" : statusColor },
-            ]}>
+            <View
+              style={[
+                styles.statusDot,
+                { backgroundColor: isMicActive ? "#82c4b0" : statusColor },
+              ]}
+            />
+            <Text
+              style={[
+                styles.statusLabel,
+                { color: isMicActive ? "#82c4b0" : statusColor },
+              ]}
+            >
               {statusLabel}
             </Text>
             {timeRemaining !== null && timeRemaining > 0 && (
               <Text style={styles.timerText}>
-                {Math.floor(timeRemaining / 60)}:{String(timeRemaining % 60).padStart(2, "0")}
+                {Math.floor(timeRemaining / 60)}:
+                {String(timeRemaining % 60).padStart(2, "0")}
               </Text>
             )}
           </View>
         </View>
 
-        <View style={{ width: 40 }} />
+        <Pressable
+          accessibilityLabel="Stop all media and speech"
+          onPress={() => {
+            stopMedia();
+            wsRef.current?.close(1000, "Stopped");
+            setStatus("ended");
+          }}
+          style={styles.headerBack}
+        >
+          <Ionicons name="stop-circle" size={30} color="#ef4444" />
+        </Pressable>
       </View>
 
       {/* Chat area */}
@@ -888,14 +1201,19 @@ export default function ConversationScreen() {
           data={messages}
           keyExtractor={(m) => m.id}
           renderItem={({ item }) => <MessageBubble message={item} />}
-          contentContainerStyle={[styles.chatList, { paddingBottom: bottomPad + 80 }]}
+          contentContainerStyle={[
+            styles.chatList,
+            { paddingBottom: bottomPad + 80 },
+          ]}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             status === "connecting" || status === "verifying" ? (
               <View style={styles.emptyState}>
                 <ActivityIndicator color="#82c4b0" />
                 <Text style={styles.emptyText}>
-                  {status === "verifying" ? "Verifying payment..." : "Connecting to Leo..."}
+                  {status === "verifying"
+                    ? "Verifying payment..."
+                    : "Connecting to Leo..."}
                 </Text>
               </View>
             ) : status === "error" ? (
@@ -924,14 +1242,28 @@ export default function ConversationScreen() {
             {/* Status strip — shown when mic is active or music analysis is running */}
             {(isMicActive || musicAnalysisActive) && (
               <View style={styles.listeningStrip}>
-                <View style={[
-                  styles.listenDot,
-                  { backgroundColor: musicAnalysisActive && musicContext ? "#c4a828" : "#82c4b0" },
-                ]} />
-                <Text style={[
-                  styles.listeningText,
-                  { color: musicAnalysisActive && musicContext ? "#c4a828" : "#82c4b0" },
-                ]}>
+                <View
+                  style={[
+                    styles.listenDot,
+                    {
+                      backgroundColor:
+                        musicAnalysisActive && musicContext
+                          ? "#c4a828"
+                          : "#82c4b0",
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.listeningText,
+                    {
+                      color:
+                        musicAnalysisActive && musicContext
+                          ? "#c4a828"
+                          : "#82c4b0",
+                    },
+                  ]}
+                >
                   {musicAnalysisActive && musicContext
                     ? `♪ ${musicContext}`
                     : isMicActive
@@ -949,6 +1281,8 @@ export default function ConversationScreen() {
                   styles.iconButton,
                   { backgroundColor: pressed ? "#1e3a52" : "#1c2e44" },
                 ]}
+                disabled={status !== "connected"}
+                accessibilityLabel="Send one camera snapshot"
                 testID="camera-button"
               >
                 <Ionicons
@@ -967,15 +1301,23 @@ export default function ConversationScreen() {
                     {
                       backgroundColor: musicAnalysisActive
                         ? "#c4a82825"
-                        : pressed ? "#1e3a52" : "#1c2e44",
+                        : pressed
+                          ? "#1e3a52"
+                          : "#1c2e44",
                       borderWidth: musicAnalysisActive ? 1 : 0,
-                      borderColor: musicAnalysisActive ? "#c4a82860" : "transparent",
+                      borderColor: musicAnalysisActive
+                        ? "#c4a82860"
+                        : "transparent",
                     },
                   ]}
                   testID="music-button"
                 >
                   <Ionicons
-                    name={musicAnalysisActive ? "musical-notes" : "musical-notes-outline"}
+                    name={
+                      musicAnalysisActive
+                        ? "musical-notes"
+                        : "musical-notes-outline"
+                    }
                     size={20}
                     color={musicAnalysisActive ? "#c4a828" : "#7b96ab"}
                   />
@@ -991,7 +1333,9 @@ export default function ConversationScreen() {
                   {
                     backgroundColor: isMicActive
                       ? "#82c4b025"
-                      : pressed ? "#1e3a52" : "#1c2e44",
+                      : pressed
+                        ? "#1e3a52"
+                        : "#1c2e44",
                     borderWidth: isMicActive ? 1 : 0,
                     borderColor: isMicActive ? "#82c4b060" : "transparent",
                   },
@@ -1009,7 +1353,11 @@ export default function ConversationScreen() {
               <TextInput
                 ref={inputRef}
                 style={styles.input}
-                placeholder={isMicActive ? "Or type here too..." : "Say something to Leo..."}
+                placeholder={
+                  isMicActive
+                    ? "Or type here too..."
+                    : "Say something to Leo..."
+                }
                 placeholderTextColor="#7b96ab"
                 value={inputText}
                 onChangeText={setInputText}
@@ -1023,7 +1371,9 @@ export default function ConversationScreen() {
               {/* Send button */}
               <Pressable
                 onPress={sendMessage}
-                disabled={!inputText.trim() || isSending || status !== "connected"}
+                disabled={
+                  !inputText.trim() || isSending || status !== "connected"
+                }
                 style={({ pressed }) => [
                   styles.sendButton,
                   {
@@ -1042,7 +1392,11 @@ export default function ConversationScreen() {
                   <Feather
                     name="arrow-up"
                     size={18}
-                    color={inputText.trim() && status === "connected" ? "#0a141f" : "#7b96ab"}
+                    color={
+                      inputText.trim() && status === "connected"
+                        ? "#0a141f"
+                        : "#7b96ab"
+                    }
                   />
                 )}
               </Pressable>
@@ -1051,9 +1405,14 @@ export default function ConversationScreen() {
         )}
 
         {status === "ended" && (
-          <View style={[styles.sessionEndedBar, { paddingBottom: bottomPad + 8 }]}>
+          <View
+            style={[styles.sessionEndedBar, { paddingBottom: bottomPad + 8 }]}
+          >
             <Text style={styles.sessionEndedText}>Session ended</Text>
-            <Pressable onPress={() => router.back()} style={styles.goBackButton}>
+            <Pressable
+              onPress={() => router.back()}
+              style={styles.goBackButton}
+            >
               <Text style={styles.goBackText}>Choose a new plan</Text>
             </Pressable>
           </View>
@@ -1068,7 +1427,12 @@ export default function ConversationScreen() {
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isLeo = message.role === "leo";
   return (
-    <View style={[styles.bubbleRow, isLeo ? styles.bubbleRowLeft : styles.bubbleRowRight]}>
+    <View
+      style={[
+        styles.bubbleRow,
+        isLeo ? styles.bubbleRowLeft : styles.bubbleRowRight,
+      ]}
+    >
       {isLeo && (
         <View style={styles.leoAvatar}>
           <Ionicons name="radio" size={14} color="#82c4b0" />

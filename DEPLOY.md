@@ -1,4 +1,6 @@
-# 🚀 Move to $0 Stack — Step-by-Step
+# Deployment reference (historical migration guide)
+
+> **2026-11-06 audit:** This PR was not deployed. The existing supplied API is `https://aisandears.onrender.com`; do not create a duplicate service just by following this older guide. Review [the audit](docs/AUDIT-2026-11-06.md) before release. No free-tier uptime, model-cost or no-credit-card guarantee is made. Deployment/signing/store operations require separate approval.
 
 This guide moves AIs&Ears off Replit onto free infrastructure that runs forever.
 
@@ -72,6 +74,15 @@ Add each of these one at a time. Click **Add Environment Variable** for each:
 | `SESSION_SECRET` | Any long random string (like a password) |
 | `BRIDGE_API_KEY` | Same value as your Replit `BRIDGE_API_KEY` secret |
 | `EXPO_TOKEN` | Your Expo access token |
+| `APP_BASE_URL` | Web checkout return origin (not the API origin) |
+| `API_PUBLIC_BASE_URL` | Public API origin, e.g. `https://aisandears.onrender.com`; bridge URLs fall back to `RENDER_EXTERNAL_URL` then the API request host |
+| `APPROVED_APK_URL` | Optional approved Expo APK artifact URL; absent means no APK is advertised |
+| `FFMPEG_BIN` | Optional ffmpeg executable path; Android music requires an installed decoder. Local verification does not verify Render. |
+| `XAI_VOICE_MODEL` | *(optional)* Defaults to `grok-voice-latest` |
+| `XAI_VOICE` | *(optional)* Defaults to `ara` (others: eve, leo, rex, sal) |
+| `XAI_VISION_MODEL` | *(optional)* Defaults to `grok-4.3` |
+
+See `artifacts/api-server/.env.example` for the full list.
 
 Click **Save Changes** when all are added.
 
@@ -93,7 +104,7 @@ You should see: `{"status":"ok"}`
 
 ## PART 3 — Keep Render Awake (UptimeRobot)
 
-Render's free tier sleeps after 15 min of no traffic. This step keeps it awake forever for free.
+A free service can sleep or hit usage limits; a monitor is not an uptime guarantee. Review current Render terms and limits before configuring one.
 
 **Step 12 — Open UptimeRobot**
 Go to: **https://uptimerobot.com**
@@ -109,7 +120,7 @@ Set these values:
 
 Click **Create Monitor**.
 
-✅ Render will never sleep again. Your users will never hit a cold start.
+A successful monitor request is not proof that cold starts, quotas or outages cannot occur.
 
 ---
 
@@ -159,15 +170,14 @@ Click **Save Changes**. Render will redeploy automatically (takes 1–2 min).
 
 **Step 20 — Update eas.json**
 Open `artifacts/ais-and-ears-native/eas.json`.
-Find the two places that say `"EXPO_PUBLIC_DOMAIN": "a-is-and-ears.replit.app"`.
-Replace both with your new Render URL (without `https://`):
+Preview and production now use the public API origin:
+```json
+"EXPO_PUBLIC_API_BASE_URL": "https://aisandears.onrender.com"
 ```
-"EXPO_PUBLIC_DOMAIN": "ais-and-ears-api.onrender.com"
-```
+This value is public build-time configuration, never an API key. The legacy `EXPO_PUBLIC_DOMAIN` remains accepted for compatibility; do not include arbitrary paths or an insecure remote HTTP origin.
 
 **Step 21 — Trigger new EAS builds**
-Run the EAS build command from the Replit shell.
-New builds will point to the new API automatically.
+Only after separate build/signing approval and the provisioning checks in the audit: run the appropriate EAS build from `artifacts/ais-and-ears-native`. This audit ran config resolution and unsigned exports only, not an EAS build.
 
 ---
 

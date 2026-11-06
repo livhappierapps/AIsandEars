@@ -19,7 +19,11 @@
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access lets Leo see you through the vision feed.",
-        "NSMicrophoneUsageDescription": "Microphone access is needed for voice conversations with Leo."
+        "NSMicrophoneUsageDescription": "Microphone access is needed for voice conversations with Leo.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
@@ -38,14 +42,29 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-web-browser",
       [
-        "expo-router",
+        "expo-secure-store",
         {
-          "origin": "https://replit.com/"
+          "faceIDPermission": false
         }
       ],
-      "expo-font",
-      "expo-web-browser"
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Camera access lets you send a snapshot to Leo.",
+          "photosPermission": false,
+          "microphonePermission": "Microphone access is needed for voice conversations and optional music analysis."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Microphone access is needed for voice conversations and optional music analysis."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

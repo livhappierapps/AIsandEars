@@ -5,13 +5,33 @@ import { logger } from "../lib/logger";
 
 const router = Router();
 
-const APK_URL = "https://expo.dev/artifacts/eas/KqxuB7hg8lP652ibwoYzKclVMkzTSYrncFWnoXEQLf0.apk";
+// The previously pinned artifact returns 404. An operator must approve a new release.
+function approvedApkUrl(): string | null {
+  const raw = process.env.APPROVED_APK_URL;
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      url.hostname === "expo.dev" &&
+      url.pathname.startsWith("/artifacts/eas/")
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+router.get("/status", (_req, res) => {
+  res.json({ apkAvailable: !!approvedApkUrl() && !!process.env.EXPO_TOKEN });
+});
 
 /** Follow HTTP redirects server-side, stripping auth on hops after the first. */
 function fetchFollowRedirects(
   url: string,
   authHeader: string,
-  hopsLeft = 6
+  hopsLeft = 6,
 ): Promise<IncomingMessage> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -41,7 +61,7 @@ function fetchFollowRedirects(
         } else {
           resolve(res);
         }
-      }
+      },
     );
 
     req.on("error", reject);
@@ -60,26 +80,35 @@ function fetchFollowRedirects(
  */
 router.get("/apk", async (req: Request, res: Response): Promise<void> => {
   const token = process.env.EXPO_TOKEN;
-  if (!token) {
+  const apkUrl = approvedApkUrl();
+  if (!token || !apkUrl) {
     res.status(503).json({ error: "APK not available" });
     return;
   }
 
   try {
-    const upstream = await fetchFollowRedirects(APK_URL, `Bearer ${token}`);
+    const upstream = await fetchFollowRedirects(apkUrl, `Bearer ${token}`);
 
     if (upstream.statusCode !== 200) {
-      logger.warn({ status: upstream.statusCode }, "APK upstream non-200 after redirects");
+      logger.warn(
+        { status: upstream.statusCode },
+        "APK upstream non-200 after redirects",
+      );
+      upstream.resume();
       res.status(502).json({ error: "APK unavailable upstream" });
       return;
     }
 
     res.setHeader("Content-Type", "application/vnd.android.package-archive");
-    res.setHeader("Content-Disposition", 'attachment; filename="aisandears.apk"');
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="aisandears.apk"',
+    );
 
     const length = upstream.headers["content-length"];
     if (length) res.setHeader("Content-Length", length);
 
+    res.on("close", () => upstream.destroy());
     upstream.pipe(res);
 
     upstream.on("error", (err: Error) => {

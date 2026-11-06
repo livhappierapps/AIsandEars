@@ -38,15 +38,24 @@ export default function SettingsTab() {
       ]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={[styles.heading, { color: colors.foreground }]}>Settings</Text>
+      <Text style={[styles.heading, { color: colors.foreground }]}>
+        Settings
+      </Text>
 
       {/* Voice & Camera */}
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
         Input
       </Text>
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <SettingRow
-          icon={<Ionicons name="mic-outline" size={20} color={colors.primary} />}
+          icon={
+            <Ionicons name="mic-outline" size={20} color={colors.primary} />
+          }
           label="Microphone"
           description="Enable voice input"
           value={settings.useMic}
@@ -55,7 +64,9 @@ export default function SettingsTab() {
         />
         <Divider colors={colors} />
         <SettingRow
-          icon={<Ionicons name="camera-outline" size={20} color={colors.primary} />}
+          icon={
+            <Ionicons name="camera-outline" size={20} color={colors.primary} />
+          }
           label="Camera"
           description="Enable camera vision"
           value={settings.useCam}
@@ -68,9 +79,20 @@ export default function SettingsTab() {
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
         Leo
       </Text>
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <SettingRow
-          icon={<Ionicons name="volume-medium-outline" size={20} color={colors.primary} />}
+          icon={
+            <Ionicons
+              name="volume-medium-outline"
+              size={20}
+              color={colors.primary}
+            />
+          }
           label="Verbal Responses"
           description="Leo speaks replies aloud"
           value={settings.verbalResponses}
@@ -81,16 +103,22 @@ export default function SettingsTab() {
         <SettingRow
           icon={<Feather name="eye" size={20} color={colors.primary} />}
           label="Auto Vision"
-          description="Send camera frames automatically"
+          description="Web only for now; native uses manual camera snapshots"
           value={settings.autoVision}
           onToggle={() => toggle("autoVision")}
           colors={colors}
         />
         <Divider colors={colors} />
         <SettingRow
-          icon={<Ionicons name="musical-notes-outline" size={20} color={colors.primary} />}
+          icon={
+            <Ionicons
+              name="musical-notes-outline"
+              size={20}
+              color={colors.primary}
+            />
+          }
           label="Music Analysis"
-          description="Let Leo hear ambient music — BPM, key, mood. Audio is never stored."
+          description="Estimate BPM, key and mood. Android clips use temporary server files during decoding."
           value={settings.musicAnalysis}
           onToggle={() => toggle("musicAnalysis")}
           colors={colors}
@@ -101,9 +129,16 @@ export default function SettingsTab() {
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
         Appearance
       </Text>
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <SettingRow
-          icon={<Ionicons name="moon-outline" size={20} color={colors.primary} />}
+          icon={
+            <Ionicons name="moon-outline" size={20} color={colors.primary} />
+          }
           label="Dark Mode"
           description="Deep navy interface"
           value={settings.isDark}
@@ -116,15 +151,23 @@ export default function SettingsTab() {
       <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
         Your xAI API Key
       </Text>
-      <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
         <View style={styles.byokRow}>
           <View style={[styles.iconWrapper, { backgroundColor: colors.muted }]}>
             <Ionicons name="key-outline" size={20} color={colors.primary} />
           </View>
           <View style={styles.rowText}>
-            <Text style={[styles.rowLabel, { color: colors.foreground }]}>Bring Your Own Key</Text>
+            <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+              Bring Your Own Key
+            </Text>
             <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>
-              Bypass xAI's daily voice limits with your own key. Stays on-device — never stored by us.
+              Stored securely on this device and sent to the AIs & Ears server
+              for your sessions. Usage is billed to your xAI account.
             </Text>
           </View>
         </View>
@@ -133,7 +176,9 @@ export default function SettingsTab() {
             styles.keyInput,
             {
               backgroundColor: colors.input,
-              borderColor: settings.xaiApiKey ? colors.primary + "60" : colors.border,
+              borderColor: settings.xaiApiKey
+                ? colors.primary + "60"
+                : colors.border,
               color: colors.foreground,
             },
           ]}
@@ -148,7 +193,9 @@ export default function SettingsTab() {
         />
         {settings.xaiApiKey ? (
           <View style={styles.keyActive}>
-            <View style={[styles.keyDot, { backgroundColor: colors.primary }]} />
+            <View
+              style={[styles.keyDot, { backgroundColor: colors.primary }]}
+            />
             <Text style={[styles.keyActiveText, { color: colors.primary }]}>
               Key active — usage billed to your xAI account
             </Text>
@@ -182,15 +229,26 @@ interface RowProps {
   colors: ReturnType<typeof useColors>;
 }
 
-function SettingRow({ icon, label, description, value, onToggle, colors }: RowProps) {
+function SettingRow({
+  icon,
+  label,
+  description,
+  value,
+  onToggle,
+  colors,
+}: RowProps) {
   return (
     <View style={styles.row}>
       <View style={[styles.iconWrapper, { backgroundColor: colors.muted }]}>
         {icon}
       </View>
       <View style={styles.rowText}>
-        <Text style={[styles.rowLabel, { color: colors.foreground }]}>{label}</Text>
-        <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>{description}</Text>
+        <Text style={[styles.rowLabel, { color: colors.foreground }]}>
+          {label}
+        </Text>
+        <Text style={[styles.rowDesc, { color: colors.mutedForeground }]}>
+          {description}
+        </Text>
       </View>
       <Switch
         value={value}
