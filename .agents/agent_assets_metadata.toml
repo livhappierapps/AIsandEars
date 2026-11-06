@@ -48,3 +48,17 @@ mtime_ms = 1793914755172
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/e1b809c6-43e5-4b4d-ab76-d09050bb8549/a367664c-f799-437c-a124-fc85586869a1"
 storage_version_token = "1793914771082678"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "WIm8gwWZTKAQjyv1WtFue"
+uri = "file://generated-artifacts/ais-and-ears-full-project-review.zip"
+type = "unspecified"
+title = "AIs & Ears full project review ZIP"
+description = "Complete source-and-assets bundle for your builder bot. It excludes runtime secrets, installed dependencies, Git history, caches, local Replit tooling, and prior export bundles."
+logical_id = "2bbddcc8-cd3a-4648-ae83-a16c146674c6"
+content_hash = "sha256:f8979e1907907b52350bd5cac57da375197c0165a6a1f5eb4b0960a2533cd735"
+size = 50348419
+mtime_ms = 1793989380589
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/2bbddcc8-cd3a-4648-ae83-a16c146674c6/1d99d589-465e-4811-9314-abe673679e5d"
+storage_version_token = "1793989413071813"
+content_type = "application/octet-stream"
