@@ -62,3 +62,31 @@ mtime_ms = 1793989380589
 storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/2bbddcc8-cd3a-4648-ae83-a16c146674c6/1d99d589-465e-4811-9314-abe673679e5d"
 storage_version_token = "1793989413071813"
 content_type = "application/octet-stream"
+
+[[outputs]]
+id = "l3vuHqHFbTp1JE_pagYM7"
+uri = "file://generated-artifacts/ais-and-ears-ipa-builder-handoff.zip"
+type = "unspecified"
+title = "AIs & Ears IPA builder handoff bundle"
+description = "Complete workspace source, app assets, project docs, prior export, EAS build profiles, and an explicit IPA feasibility/provisioning task brief. No runtime secrets or signing credentials are included."
+logical_id = "b601960a-70cb-4830-9f43-d62bc1f6b8fa"
+content_hash = "sha256:c52fc826e74c9f43ee2aebc21a7bdd0829a7cf87f5068a267a1383af2a22e6a9"
+size = 88403700
+mtime_ms = 1793989841973
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/b601960a-70cb-4830-9f43-d62bc1f6b8fa/ce817bd8-9877-446a-86df-2e2f93b032f0"
+storage_version_token = "1793989868133252"
+content_type = "application/octet-stream"
+
+[[outputs]]
+id = "T0C39EJ30SHFlnRPutcQu"
+uri = "file://docs/IPA_BUILDER_HANDOFF.md"
+type = "text"
+title = "IPA builder instructions"
+description = "The bot's exact task: assess real-device IPA feasibility and provisioning, diagnose known issues, and return proposed fixes without changing the project."
+logical_id = "82f463a9-59aa-441d-bd56-e17f39f714d9"
+content_hash = "sha256:e082199da7cae62597d5d6decc577e5c67c8323f796af2e5127e470640149fa1"
+size = 3943
+mtime_ms = 1793989806625
+storage_uri = "gcs://replit-rams-assets-picard/rams/assets/repl:924e3075-c4fd-46b6-9b30-62b750c5c182/82f463a9-59aa-441d-bd56-e17f39f714d9/6468c649-1b6a-49a9-a74b-310711d670c2"
+storage_version_token = "1793989869041969"
+content_type = "text/markdown"
