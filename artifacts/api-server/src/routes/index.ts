@@ -7,12 +7,14 @@ import grokVisionRouter from "./grokVision";
 import musicAnalyzeRouter from "./musicAnalyze";
 import bridgeRouter from "./bridge";
 import downloadRouter from "./download";
+import ownerPassRouter from "./ownerPass";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(productsRouter);
 router.use(checkoutRouter);
+router.use(ownerPassRouter);
 router.use(aiTokenRouter);
 router.use(grokVisionRouter);
 router.use(musicAnalyzeRouter);

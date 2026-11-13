@@ -228,7 +228,7 @@ export default function Home() {
                 transition={{ duration: 0.2 }}
                 className="flex-1 flex flex-col"
               >
-                <Suspense fallback={null}><PackagesTab /></Suspense>
+                <Suspense fallback={null}><PackagesTab onOwnerSession={setDirectSession} /></Suspense>
               </motion.div>
             )}
             {activeTab === "settings" && (

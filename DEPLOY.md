@@ -74,6 +74,7 @@ Add each of these one at a time. Click **Add Environment Variable** for each:
 | `SESSION_SECRET` | Any long random string (like a password) |
 | `BRIDGE_API_KEY` | Same value as your Replit `BRIDGE_API_KEY` secret |
 | `EXPO_TOKEN` | Your Expo access token |
+| `OWNER_PASS` | *(optional)* Private owner pass, at least 24 characters (use a long random string). Enables `POST /api/owner-pass` and the small **Owner access** link on the packages screen, which starts a 24-hour voice + vision session without Whop. Unset = the route returns 404. Five wrong tries from one address locks it for 15 minutes. |
 | `APP_BASE_URL` | Web checkout return origin (not the API origin) |
 | `API_PUBLIC_BASE_URL` | Public API origin, e.g. `https://aisandears.onrender.com`; bridge URLs fall back to `RENDER_EXTERNAL_URL` then the API request host |
 | `APPROVED_APK_URL` | Optional approved Expo APK artifact URL; absent means no APK is advertised |
@@ -83,6 +84,12 @@ Add each of these one at a time. Click **Add Environment Variable** for each:
 | `XAI_VISION_MODEL` | *(optional)* Defaults to `grok-4.3` |
 
 See `artifacts/api-server/.env.example` for the full list.
+
+**Owner pass:** sessions made with `OWNER_PASS` are stored in `paid_sessions`
+like paid ones but their payment id starts with `owner_comp_` (never a Whop
+`mem_` id), so they are easy to tell apart from paid memberships. To revoke
+access, change or remove `OWNER_PASS`; existing owner sessions expire within
+24 hours.
 
 Click **Save Changes** when all are added.
 
@@ -203,3 +210,25 @@ In your Whop app settings, update any allowed redirect domains to include `ais-a
 | Keep-alive | UptimeRobot | $0 |
 
 If Replit disappears, users notice nothing. Come back here to code; the app runs itself.
+
+---
+
+## Database schema step (safe by design)
+
+The live Render build runs `pnpm --filter @workspace/db run push-force`. Despite
+its historical name, that script is now plain `drizzle-kit push` (no `--force`)
+and `lib/db/drizzle.config.ts` limits it to `tablesFilter: ["paid_sessions"]`:
+
+- Tables it doesn't own (e.g. another app's tables in a shared Neon database) are
+  ignored, never dropped.
+- Additive changes (new table/column) apply automatically.
+- Any data-loss change (dropping/truncating a column or table) needs an
+  interactive "yes"; on Render there is no terminal, so drizzle-kit logs an
+  error and applies **nothing**. Do those changes deliberately by hand.
+- Add new table names to `tablesFilter` when you add tables to `lib/db/src/schema`
+  (a test fails if they drift).
+
+**Proxy / client IPs:** the API sets Express `trust proxy` to 1 hop (Render's
+load balancer) so per-client limits use the real client IP. Override with
+`TRUST_PROXY_HOPS` (0 = no proxy).
+

@@ -5,8 +5,12 @@ import { randomUUID } from "crypto";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { WebhookHandlers } from "./webhookHandlers";
+import { applyTrustProxy } from "./lib/trustProxy";
 
 const app: Express = express();
+
+// Real client IPs behind Render's proxy (needed for per-client rate limits).
+applyTrustProxy(app);
 
 app.use(
   pinoHttp({
