@@ -1,3 +1,4 @@
+import { normalizeApiOrigin } from "@workspace/media-utils";
 /**
  * bridge.ts — Trusted external app session creation
  *
@@ -45,7 +46,11 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const { apiKey, tier = "full-session", durationMinutes = 30 } = req.body as {
+  const {
+    apiKey,
+    tier = "full-session",
+    durationMinutes = 30,
+  } = (req.body ?? {}) as {
     apiKey?: unknown;
     tier?: unknown;
     durationMinutes?: unknown;
@@ -57,9 +62,11 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
   }
 
   // Timing-safe comparison — prevents timing attacks on the key check
+  const keyBytes = Buffer.from(apiKey),
+    expectedBytes = Buffer.from(bridgeKey);
   const safeEqual =
-    apiKey.length === bridgeKey.length &&
-    timingSafeEqual(Buffer.from(apiKey), Buffer.from(bridgeKey));
+    keyBytes.length === expectedBytes.length &&
+    timingSafeEqual(keyBytes, expectedBytes);
 
   if (!safeEqual) {
     logger.warn({ ip: req.ip }, "Bridge session: invalid API key");
@@ -85,6 +92,26 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
 
   const expiresAt = new Date(Date.now() + resolvedDuration * 60 * 1000);
 
+  // APP_BASE_URL belongs to the WEB checkout return host, not necessarily this API.
+  const requestHost = req.get("host") ?? "";
+  const local = /^(localhost|127\.0\.0\.1)(:|$)/.test(requestHost);
+  let base: string;
+  try {
+    base = normalizeApiOrigin(
+      process.env.API_PUBLIC_BASE_URL ||
+        process.env.RENDER_EXTERNAL_URL ||
+        `${local ? "http" : "https"}://${requestHost}`,
+    );
+  } catch {
+    res
+      .status(503)
+      .json({
+        error: "API public origin is invalid; configure API_PUBLIC_BASE_URL",
+      });
+    return;
+  }
+  const wsBase = base.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+
   const session = await storage.createSession({
     id: crypto.randomUUID(),
     stripeSessionId: `bridge_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`, // DB column kept as-is
@@ -92,16 +119,12 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
     expiresAt,
   });
 
-  // APP_BASE_URL covers Render/Cloudflare; falls back to Replit vars for backwards compat
-  const rawBase =
-    process.env.APP_BASE_URL ??
-    (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : null) ??
-    (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]?.trim()}` : null) ??
-    "";
-  const domain = rawBase.replace(/^https?:\/\//, "").replace(/\/$/, "");
-
   logger.info(
-    { sessionId: session.id, tier: resolvedTier, durationMinutes: resolvedDuration },
+    {
+      sessionId: session.id,
+      tier: resolvedTier,
+      durationMinutes: resolvedDuration,
+    },
     "Bridge session created",
   );
 
@@ -111,8 +134,8 @@ router.post("/session", async (req: Request, res: Response): Promise<void> => {
     expiresAt: expiresAt.toISOString(),
     durationMinutes: resolvedDuration,
     // Plug these directly into your bridge app
-    wsUrl: `wss://${domain}/api/grok-live?sessionId=${session.id}`,
-    visionUrl: `https://${domain}/api/grok-vision`,
+    wsUrl: `${wsBase}/api/grok-live?sessionId=${session.id}`,
+    visionUrl: `${base}/api/grok-vision`,
   });
 });
 

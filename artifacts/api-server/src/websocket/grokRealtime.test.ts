@@ -286,11 +286,38 @@ describe("grokRealtime lifecycle logging", () => {
     await waitForClose(client);
     await flushAsync();
 
-    const errorCall = spyError.mock.calls.find(([obj]: [unknown, ...unknown[]]) => {
-      if (typeof obj !== "object" || obj === null) return false;
-      const o = obj as Record<string, unknown>;
-      return o.sessionId !== undefined && o.err !== undefined;
-    });
+    const errorCall = spyError.mock.calls.find(
+      ([obj]: [unknown, ...unknown[]]) => {
+        if (typeof obj !== "object" || obj === null) return false;
+        const o = obj as Record<string, unknown>;
+        return o.sessionId !== undefined && o.err !== undefined;
+      },
+    );
     expect(errorCall).toBeDefined();
+  });
+  it("does not open a paid upstream if client disconnected during session lookup", async () => {
+    let resolveSession!: (session: never) => void;
+    vi.mocked(storage.getSession).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSession = resolve;
+        }),
+    );
+    const client = connectClient(port, "?sessionId=cancelled-before-auth");
+    await new Promise<void>((resolve) => client.once("open", () => resolve()));
+    client.close(1000, "cancelled");
+    await waitForClose(client);
+    resolveSession({ id: "cancelled-before-auth", expiresAt: null } as never);
+    await flushAsync();
+    expect(shared.lastXaiInstance).toBeNull();
+  });
+
+  it("enforces expiry even when the socket stays open", async () => {
+    vi.mocked(storage.getSession).mockResolvedValue({
+      id: "short-session",
+      expiresAt: new Date(Date.now() + 80),
+    } as never);
+    const client = connectClient(port, "?sessionId=short-session");
+    expect((await waitForClose(client)).code).toBe(4003);
   });
 });

@@ -1,3 +1,4 @@
+import { normalizeApiOrigin } from "@workspace/media-utils";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import App from "./App";
@@ -9,7 +10,11 @@ import "./index.css";
 // Cloudflare Pages (or any host that isn't the API server itself).
 // When VITE_API_BASE_URL is unset the client uses same-origin relative paths
 // (current Replit behaviour — no change needed there).
-setBaseUrl((import.meta.env.VITE_API_BASE_URL as string | undefined) || null);
+setBaseUrl(
+  import.meta.env.VITE_API_BASE_URL
+    ? normalizeApiOrigin(import.meta.env.VITE_API_BASE_URL)
+    : null,
+);
 
 // ── Global error visibility ───────────────────────────────────────────────
 // Structured log format so any console capture (Sentry, LogRocket, etc.) can
@@ -50,5 +55,5 @@ createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
-  </HelmetProvider>
+  </HelmetProvider>,
 );
