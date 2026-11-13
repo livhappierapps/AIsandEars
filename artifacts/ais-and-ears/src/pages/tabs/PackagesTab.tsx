@@ -1,6 +1,7 @@
 import { PricingSection } from "@/components/pricing/PricingSection";
+import { OwnerAccess, type OwnerSession } from "@/components/owner/OwnerAccess";
 
-export function PackagesTab() {
+export function PackagesTab({ onOwnerSession }: { onOwnerSession?: (s: OwnerSession) => void }) {
   return (
     <div className="flex-1 flex flex-col overflow-y-auto pb-4">
       <div className="px-6 pt-8 pb-2 text-center">
@@ -10,6 +11,7 @@ export function PackagesTab() {
         </p>
       </div>
       <PricingSection />
+      {onOwnerSession && <OwnerAccess onSession={onOwnerSession} />}
     </div>
   );
 }

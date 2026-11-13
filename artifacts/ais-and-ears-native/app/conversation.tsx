@@ -124,6 +124,7 @@ export default function ConversationScreen() {
     session_id?: string;
     membership_id?: string;
     tier?: string;
+    expires_at?: string;
   }>();
 
   const [status, setStatus] = useState<ConnStatus>("idle");
@@ -271,6 +272,10 @@ export default function ConversationScreen() {
       // Already a verified session UUID — go straight to connecting
       setVerifiedSessionId(rawSessionId);
       setTier(params.tier ?? null);
+      if (params.expires_at) {
+        const exp = new Date(params.expires_at);
+        if (!Number.isNaN(exp.getTime())) setExpiresAt(exp);
+      }
       setStatus("connecting");
     }
   }, []);

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useColors } from "@/hooks/useColors";
 
+import { OwnerAccess } from "@/components/OwnerAccess";
 import { apiUrl } from "@/lib/api";
 
 interface Tier {
@@ -158,6 +159,8 @@ export default function PackagesTab() {
             onBuy={handleBuy}
           />
         ))}
+
+        <OwnerAccess />
       </ScrollView>
     </View>
   );
