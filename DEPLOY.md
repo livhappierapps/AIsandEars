@@ -210,3 +210,25 @@ In your Whop app settings, update any allowed redirect domains to include `ais-a
 | Keep-alive | UptimeRobot | $0 |
 
 If Replit disappears, users notice nothing. Come back here to code; the app runs itself.
+
+---
+
+## Database schema step (safe by design)
+
+The live Render build runs `pnpm --filter @workspace/db run push-force`. Despite
+its historical name, that script is now plain `drizzle-kit push` (no `--force`)
+and `lib/db/drizzle.config.ts` limits it to `tablesFilter: ["paid_sessions"]`:
+
+- Tables it doesn't own (e.g. another app's tables in a shared Neon database) are
+  ignored, never dropped.
+- Additive changes (new table/column) apply automatically.
+- Any data-loss change (dropping/truncating a column or table) needs an
+  interactive "yes"; on Render there is no terminal, so drizzle-kit logs an
+  error and applies **nothing**. Do those changes deliberately by hand.
+- Add new table names to `tablesFilter` when you add tables to `lib/db/src/schema`
+  (a test fails if they drift).
+
+**Proxy / client IPs:** the API sets Express `trust proxy` to 1 hop (Render's
+load balancer) so per-client limits use the real client IP. Override with
+`TRUST_PROXY_HOPS` (0 = no proxy).
+

@@ -18,12 +18,14 @@ import ownerPass, {
   OWNER_TIER,
   resetOwnerPassLimiter,
 } from "./ownerPass";
+import { applyTrustProxy, trustProxyHops } from "../lib/trustProxy";
 
 const PASS = "test-owner-pass-0123456789abcdefghijklmnop";
 let server: Server, base: string;
 
 beforeAll(async () => {
   const app = express();
+  applyTrustProxy(app); // same setting as the real app
   app.use(express.json());
   app.use("/api", ownerPass);
   server = await new Promise<Server>((resolve) => {
@@ -48,10 +50,13 @@ beforeEach(() => {
     }) as never);
 });
 
-const post = (body: unknown) =>
+const post = (body: unknown, forwardedFor?: string) =>
   fetch(base + "/api/owner-pass", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(forwardedFor ? { "X-Forwarded-For": forwardedFor } : {}),
+    },
     body: JSON.stringify(body),
   });
 
@@ -97,5 +102,26 @@ describe("owner pass", () => {
     expect(storage.createSession).not.toHaveBeenCalled();
     resetOwnerPassLimiter();
     expect((await post({ code: PASS })).status).toBe(200);
+  });
+
+  it("counts attempts per real client behind the proxy", async () => {
+    // Proxy appends the real client as the right-most X-Forwarded-For hop.
+    for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) {
+      expect((await post({ code: `wrong-${i}` }, "203.0.113.7")).status).toBe(401);
+    }
+    expect((await post({ code: PASS }, "203.0.113.7")).status).toBe(429);
+    // Prepending a fake address does not escape the limit.
+    expect((await post({ code: PASS }, "198.51.100.1, 203.0.113.7")).status).toBe(429);
+    // A different real client is not locked out by someone else's tries.
+    expect((await post({ code: PASS }, "198.51.100.99")).status).toBe(200);
+  });
+
+  it("defaults to trusting one proxy hop", () => {
+    vi.stubEnv("TRUST_PROXY_HOPS", "");
+    expect(trustProxyHops()).toBe(1);
+    vi.stubEnv("TRUST_PROXY_HOPS", "0");
+    expect(trustProxyHops()).toBe(0);
+    vi.stubEnv("TRUST_PROXY_HOPS", "nonsense");
+    expect(trustProxyHops()).toBe(1);
   });
 });
