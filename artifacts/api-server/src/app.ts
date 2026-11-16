@@ -90,6 +90,10 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+app.get("/", (_req, res) => {
+  res.json({ status: "ok", service: "ais-and-ears-api" });
+});
+
 app.use("/api", router);
 
 // ── Global error handler ───────────────────────────────────────────────────
